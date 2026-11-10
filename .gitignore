@@ -1,0 +1,6 @@
+# Python
+__pycache__/
+*.pyc
+
+# 학습 결과 (새 run은 공유하지 않음)
+results/

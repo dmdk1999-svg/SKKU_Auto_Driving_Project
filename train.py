@@ -55,16 +55,20 @@ REWARD_OVERRIDES = dict(
 )
 REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}
 
-
+# ************************ WEEK 6 과제를 위해 건드릴 부분 *********************************
+# train.py는 어디서 뭘 불러오는지 등을 정리한 파일인거임.
+# step은 바꾸지 말것.
 HPARAMS = dict(
     # ---- 최적화 ----
-    lr=1e-4,                 # 학습률. 보상이 요동치면 낮출 것 (3e-4 → 1e-4 → 5e-5)
+    # lr=1e-4,                 # 학습률. 보상이 요동치면 낮출 것 (3e-4 → 1e-4 → 5e-5)
+    lr=5e-5,
     n_steps=2048,            # rollout 길이. 크면 advantage 추정이 안정적
     n_epochs=10,             # 모은 데이터 재사용 횟수
     minibatch_size=64,
 
     # ---- 할인 / advantage ----
-    gamma=0.99,              # 할인율 γ. 0.99 ≈ 100스텝(50초) 앞을 내다봄
+    # gamma=0.99,              # 할인율 γ. 0.99 ≈ 100스텝(50초) 앞을 내다봄
+    gamma=0.997,
     gae_lambda=0.95,         # GAE λ. 1에 가까울수록 분산↑편향↓
 
     # ---- PPO 고유 ----
@@ -146,8 +150,11 @@ if __name__ == "__main__":
     sumocfg = road_builder.build(ROAD, EGO, TRAFFIC,
                                  os.path.join(BASE, "env", "sumo"))
     print(f"도로 생성 완료: {sumocfg}")
-    print(f"  길이 {ROAD['length']}m, {ROAD['num_lanes']}차선, "
-          f"교통량 {TRAFFIC['vehs_per_hour']}대/시간")
+    if road_builder.osm_config(ROAD) is not None:
+        print(f"  OSM 도로망, ego 경로 {ROAD['osm']['ego_routes']}")
+    else:
+        print(f"  길이 {ROAD['length']}m, {ROAD['num_lanes']}차선, "
+              f"교통량 {TRAFFIC['vehs_per_hour']}대/시간")
 
     # 2) 결과 폴더 + 로거
     run_dir = make_run_dir()

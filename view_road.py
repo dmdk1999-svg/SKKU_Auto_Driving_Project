@@ -46,10 +46,27 @@ def print_summary():
     print("─" * 46)
     print(" 현재 도로 설정 (env/road_config.py)")
     print("─" * 46)
+    osm = road_builder.osm_config(ROAD)
+    if osm is not None:
+        print(f"  OSM 도로망     : env/osm/{osm['source']}")
+        print(f"  높이           : {', '.join(osm['low_roads'])} z=0, "
+              f"나머지 본선 z={osm['deck_height']} m")
+        print(f"  ego 경로       : {', '.join(osm['ego_routes'])}")
+        print(f"  배경 교통량    : {sum(osm['flows'].values())} 대/시간")
+        print("─" * 46)
+        return
     print(f"  도로 길이      : {ROAD['length']} m")
     print(f"  차선 수        : {ROAD['num_lanes']}")
     print(f"  제한속도       : {ROAD['speed_limit']} m/s "
           f"(≈ {float(ROAD['speed_limit']) * 3.6:.0f} km/h)")
+    inter = ROAD.get("intersection") or {}
+    if inter.get("enabled"):
+        print(f"  사거리 위치    : 출발점에서 {inter['position']} m")
+        flare = ", ".join(f"{d}m 전 +좌{l}/우{r}"
+                          for d, l, r in inter.get("main_flare", []))
+        print(f"  주도로 차로확장: {flare or '없음'}")
+        print(f"  교차도로       : 편도 {inter.get('cross_num_lanes', 2)}차선, "
+              f"{inter.get('cross_vph', 0)} 대/시간")
     print(f"  배경 교통량    : {TRAFFIC['vehs_per_hour']} 대/시간")
     print(f"  배경차 최고속도: {TRAFFIC['max_speed']} m/s")
     print(f"  ego 가속/감속  : +{EGO['accel']} / -{EGO['decel']} m/s²")
