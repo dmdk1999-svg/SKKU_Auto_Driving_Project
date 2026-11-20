@@ -95,6 +95,7 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
     #               ego는 여기에 없고, 환경(sumo_env.py)이 reset마다
     #               traci.vehicle.add()로 직접 투입한다.
     # ──────────────────────────────────────────────────────
+    lc_model = road.get("lane_change_model", "LC2013")
     controllers = traffic.get("controllers")
     if controllers:
         # probability 합이 1이 아니어도 되도록 자동 정규화
@@ -107,6 +108,7 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
                 f'id="car_{name}"',
                 f'probability="{prob:.4f}"',
                 f'carFollowModel="{c["carFollowModel"]}"',
+                f'laneChangeModel="{lc_model}"',
                 f'accel="{c.get("accel", 2.5)}"',
                 f'decel="{c.get("decel", 4.5)}"',
                 f'tau="{c.get("tau", 1.0)}"',
@@ -135,6 +137,8 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
             if c.get("keep_lane", True):
                 attrs += ['lcStrategic="0"', 'lcCooperative="0"',
                           'lcSpeedGain="0"', 'lcKeepRight="0"']
+                if lc_model == "SL2015":
+                    attrs.append('lcSublane="0"')
             vtype_lines.append("        <vType " + " ".join(attrs) + "/>")
         vtypes_block = ('    <vTypeDistribution id="carDist">\n'
                         + "\n".join(vtype_lines)
@@ -143,6 +147,7 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
     else:
         # controllers 설정이 없으면 예전 방식(단일 Krauss)으로 동작 (하위호환)
         vtypes_block = (f'    <vType id="car" accel="2.5" decel="4.5" '
+                        f'laneChangeModel="{lc_model}" '
                         f'maxSpeed="{traffic["max_speed"]}" '
                         f'sigma="{traffic.get("sigma", 0.5)}" '
                         f'vClass="passenger" guiShape="passenger/sedan"/>')
@@ -160,7 +165,7 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
 
     with open(os.path.join(out_dir, "highway.rou.xml"), "w") as f:
         f.write(f"""<routes>
-    <vType id="ego_type" accel="{ego['accel']}" decel="{ego['decel']}" maxSpeed="{ego['max_speed']}" color="1,0,0" vClass="passenger" guiShape="passenger/sedan"/>
+    <vType id="ego_type" accel="{ego['accel']}" decel="{ego['decel']}" maxSpeed="{ego['max_speed']}" laneChangeModel="{lc_model}" maxSpeedLat="{ego.get('max_speed_lat', 1.0)}" lcAccelLat="{ego.get('lc_accel_lat', 1.0)}" color="1,0,0" vClass="passenger" guiShape="passenger/sedan"/>
 {vtypes_block}
 {demand_block}
 </routes>
@@ -221,15 +226,22 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
     # ──────────────────────────────────────────────────────
     # 5) sumocfg: "이 net 파일과 이 route 파일로 시뮬레이션해라"
     # ──────────────────────────────────────────────────────
+    lat_res = road.get("lateral_resolution")
+    processing_block = ""
+    if lat_res is not None:
+        processing_block = f"""    <processing>
+        <lateral-resolution value="{lat_res}"/>
+    </processing>
+"""
     cfg_path = os.path.join(out_dir, "highway.sumocfg")
     with open(cfg_path, "w") as f:
-        f.write("""<configuration>
+        f.write(f"""<configuration>
     <input>
         <net-file value="highway.net.xml"/>
         <route-files value="highway.rou.xml"/>
         <additional-files value="highway.scenery.xml"/>
     </input>
-    <gui_only>
+{processing_block}    <gui_only>
         <gui-settings-file value="highway.gui.xml"/>
     </gui_only>
 </configuration>
