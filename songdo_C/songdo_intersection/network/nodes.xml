@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<nodes>
+  <node id="C" x="86.53768964483466" y="84.7966814320769" type="traffic_light" />
+  <node id="east_split" x="106.40408176143924" y="59.653978182788705" type="priority" />
+  <node id="1_1_boundary" x="125.01355785599542" y="129.69902853349535" type="priority" />
+  <node id="1_2_boundary" x="115.93016164657092" y="135.65774796321057" type="priority" />
+  <node id="2_1_boundary" x="-35.9817262134214" y="-37.688931090505015" type="priority" />
+  <node id="2_2_boundary" x="-36.10720618154058" y="-57.29556895788604" type="priority" />
+  <node id="3_exit" x="131.98733782927835" y="36.58863876430163" type="priority" />
+  <node id="3_3_boundary" x="140.4528375743248" y="41.67887636144102" type="priority" />
+</nodes>

@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='utf8'?>
+<configuration>
+  <input>
+    <net-file value="../../network/C.net.xml" />
+    <route-files value="traffic.rou.xml" />
+    <additional-files value="signals.add.xml" />
+  </input>
+  <time>
+    <step-length value="0.2" />
+  </time>
+  <processing>
+    <lateral-resolution value="0.2" />
+    <time-to-teleport value="-1" />
+    <step-method.ballistic value="true" />
+    <collision.action value="warn" />
+    <collision.check-junctions value="true" />
+    <collision.mingap-factor value="0" />
+  </processing>
+</configuration>

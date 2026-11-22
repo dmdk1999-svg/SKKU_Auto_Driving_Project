@@ -1,0 +1,24 @@
+{
+  "session": "PM4",
+  "seed": 1,
+  "expected": 357,
+  "arrived": 357,
+  "collisions": 0,
+  "teleports": {
+    "total": "0",
+    "jam": "0",
+    "yield": "0",
+    "wrongLane": "0"
+  },
+  "route_arrivals": {
+    "3_3>1_1": 12,
+    "2_2>1_1": 201,
+    "3_3>2_1": 9,
+    "1_2>2_1": 109,
+    "2_2>3_2": 12,
+    "1_2>3_2": 14
+  },
+  "stopped_vehicles": 93,
+  "mean_wait_s": 11.22016806722689,
+  "max_depart_delay_s": 49.83
+}

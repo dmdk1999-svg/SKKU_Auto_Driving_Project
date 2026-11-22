@@ -1,0 +1,659 @@
+{
+  "AM1": {
+    "source_vehicles": 200,
+    "accepted_routes": 165,
+    "excluded": {
+      "incomplete_route": 30,
+      "short": 5
+    },
+    "duration": 206.18799999999828,
+    "approach_counts": {
+      "1_2": 58,
+      "2_2": 101,
+      "3_3": 6
+    },
+    "route_counts": {
+      "2_2>1_1": 96,
+      "1_2>2_1": 51,
+      "1_2>3_2": 7,
+      "2_2>3_2": 5,
+      "3_3>1_1": 4,
+      "3_3>2_1": 2
+    },
+    "signal_phases": [
+      [
+        103,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 46,
+      "cycle": 150,
+      "balanced_crossing_agreement": 0.6972639933166249
+    }
+  },
+  "AM2": {
+    "source_vehicles": 497,
+    "accepted_routes": 390,
+    "excluded": {
+      "incomplete_route": 105,
+      "short": 2
+    },
+    "duration": 1128.1160000000018,
+    "approach_counts": {
+      "1_2": 195,
+      "2_2": 181,
+      "3_3": 14
+    },
+    "route_counts": {
+      "1_2>2_1": 182,
+      "2_2>1_1": 180,
+      "1_2>3_2": 13,
+      "3_3>2_1": 12,
+      "3_3>1_1": 2,
+      "2_2>3_2": 1
+    },
+    "signal_phases": [
+      [
+        113,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 26,
+      "cycle": 160,
+      "balanced_crossing_agreement": 0.755375937194119
+    }
+  },
+  "AM3": {
+    "source_vehicles": 507,
+    "accepted_routes": 345,
+    "excluded": {
+      "incomplete_route": 147,
+      "short": 13,
+      "tracking_gap": 1,
+      "unsupported_turn": 1
+    },
+    "duration": 1019.987000000001,
+    "approach_counts": {
+      "1_2": 173,
+      "2_2": 158,
+      "3_3": 14
+    },
+    "route_counts": {
+      "1_2>2_1": 160,
+      "2_2>1_1": 151,
+      "1_2>3_2": 13,
+      "3_3>2_1": 10,
+      "2_2>3_2": 7,
+      "3_3>1_1": 4
+    },
+    "signal_phases": [
+      [
+        113,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 24,
+      "cycle": 160,
+      "balanced_crossing_agreement": 0.7717994793466492
+    }
+  },
+  "AM4": {
+    "source_vehicles": 395,
+    "accepted_routes": 288,
+    "excluded": {
+      "incomplete_route": 94,
+      "unsupported_turn": 2,
+      "short": 11
+    },
+    "duration": 1127.1170000000056,
+    "approach_counts": {
+      "1_2": 124,
+      "2_2": 155,
+      "3_3": 9
+    },
+    "route_counts": {
+      "2_2>1_1": 149,
+      "1_2>2_1": 115,
+      "1_2>3_2": 9,
+      "3_3>2_1": 7,
+      "2_2>3_2": 6,
+      "3_3>1_1": 2
+    },
+    "signal_phases": [
+      [
+        115,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        15,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        15,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 34,
+      "cycle": 160,
+      "balanced_crossing_agreement": 0.8061728395061728
+    }
+  },
+  "AM5": {
+    "source_vehicles": 276,
+    "accepted_routes": 215,
+    "excluded": {
+      "incomplete_route": 55,
+      "short": 6
+    },
+    "duration": 1017.9849999999933,
+    "approach_counts": {
+      "1_2": 77,
+      "2_2": 126,
+      "3_3": 12
+    },
+    "route_counts": {
+      "2_2>1_1": 121,
+      "1_2>2_1": 74,
+      "3_3>2_1": 10,
+      "2_2>3_2": 5,
+      "1_2>3_2": 3,
+      "3_3>1_1": 2
+    },
+    "signal_phases": [
+      [
+        90,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        13,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        17,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 114,
+      "cycle": 135,
+      "balanced_crossing_agreement": 0.7372222222222221
+    }
+  },
+  "PM1": {
+    "source_vehicles": 354,
+    "accepted_routes": 261,
+    "excluded": {
+      "incomplete_route": 82,
+      "class": 6,
+      "short": 5
+    },
+    "duration": 1128.0809999999983,
+    "approach_counts": {
+      "1_2": 88,
+      "2_2": 155,
+      "3_3": 18
+    },
+    "route_counts": {
+      "2_2>1_1": 145,
+      "1_2>2_1": 84,
+      "3_3>2_1": 14,
+      "2_2>3_2": 10,
+      "3_3>1_1": 4,
+      "1_2>3_2": 4
+    },
+    "signal_phases": [
+      [
+        102,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        14,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        19,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 142,
+      "cycle": 150,
+      "balanced_crossing_agreement": 0.7942817294281729
+    }
+  },
+  "PM2": {
+    "source_vehicles": 178,
+    "accepted_routes": 139,
+    "excluded": {
+      "incomplete_route": 35,
+      "class": 2,
+      "short": 2
+    },
+    "duration": 225.20400000000518,
+    "approach_counts": {
+      "1_2": 56,
+      "2_2": 79,
+      "3_3": 4
+    },
+    "route_counts": {
+      "2_2>1_1": 72,
+      "1_2>2_1": 53,
+      "2_2>3_2": 7,
+      "3_3>2_1": 4,
+      "1_2>3_2": 3
+    },
+    "signal_phases": [
+      [
+        134,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        15,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 22,
+      "cycle": 180,
+      "balanced_crossing_agreement": 0.9494949494949495
+    }
+  },
+  "PM3": {
+    "source_vehicles": 393,
+    "accepted_routes": 318,
+    "excluded": {
+      "incomplete_route": 58,
+      "short": 11,
+      "class": 6
+    },
+    "duration": 1130.1180000000022,
+    "approach_counts": {
+      "1_2": 126,
+      "2_2": 181,
+      "3_3": 11
+    },
+    "route_counts": {
+      "2_2>1_1": 172,
+      "1_2>2_1": 114,
+      "1_2>3_2": 12,
+      "2_2>3_2": 9,
+      "3_3>2_1": 6,
+      "3_3>1_1": 5
+    },
+    "signal_phases": [
+      [
+        104,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        15,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 140,
+      "cycle": 150,
+      "balanced_crossing_agreement": 0.7466016093134736
+    }
+  },
+  "PM4": {
+    "source_vehicles": 449,
+    "accepted_routes": 357,
+    "excluded": {
+      "incomplete_route": 60,
+      "short": 17,
+      "class": 15
+    },
+    "duration": 1122.076000000001,
+    "approach_counts": {
+      "1_2": 123,
+      "2_2": 213,
+      "3_3": 21
+    },
+    "route_counts": {
+      "2_2>1_1": 201,
+      "1_2>2_1": 109,
+      "1_2>3_2": 14,
+      "2_2>3_2": 12,
+      "3_3>1_1": 12,
+      "3_3>2_1": 9
+    },
+    "signal_phases": [
+      [
+        128,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        17,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        20,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 28,
+      "cycle": 180,
+      "balanced_crossing_agreement": 0.7135955831608006
+    }
+  },
+  "PM5": {
+    "source_vehicles": 411,
+    "accepted_routes": 327,
+    "excluded": {
+      "incomplete_route": 63,
+      "class": 18,
+      "short": 3
+    },
+    "duration": 1128.1170000000056,
+    "approach_counts": {
+      "1_2": 142,
+      "2_2": 173,
+      "3_3": 12
+    },
+    "route_counts": {
+      "2_2>1_1": 164,
+      "1_2>2_1": 131,
+      "1_2>3_2": 11,
+      "2_2>3_2": 9,
+      "3_3>2_1": 9,
+      "3_3>1_1": 3
+    },
+    "signal_phases": [
+      [
+        104,
+        "GGGrrrrGGGG"
+      ],
+      [
+        3,
+        "yyyrrrryyyy"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        15,
+        "rrrGrrrrrrr"
+      ],
+      [
+        3,
+        "rrryrrrrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ],
+      [
+        16,
+        "rrrrGGGrrrr"
+      ],
+      [
+        3,
+        "rrrryyyrrrr"
+      ],
+      [
+        2,
+        "rrrrrrrrrrr"
+      ]
+    ],
+    "signal_fit": {
+      "offset": 136,
+      "cycle": 150,
+      "balanced_crossing_agreement": 0.8154904306220097
+    }
+  }
+}

@@ -1,0 +1,86 @@
+[
+  {
+    "session": "PM3",
+    "route": "1_2>2_1",
+    "ego_id": "v191",
+    "seed": 22000,
+    "case": "PM3_0"
+  },
+  {
+    "session": "PM3",
+    "route": "1_2>2_1",
+    "ego_id": "v340",
+    "seed": 22001,
+    "case": "PM3_1"
+  },
+  {
+    "session": "PM3",
+    "route": "1_2>3_2",
+    "ego_id": "v99",
+    "seed": 22002,
+    "case": "PM3_2"
+  },
+  {
+    "session": "PM3",
+    "route": "1_2>3_2",
+    "ego_id": "v229",
+    "seed": 22003,
+    "case": "PM3_3"
+  },
+  {
+    "session": "PM3",
+    "route": "2_2>1_1",
+    "ego_id": "v312",
+    "seed": 22004,
+    "case": "PM3_4"
+  },
+  {
+    "session": "PM3",
+    "route": "2_2>1_1",
+    "ego_id": "v242",
+    "seed": 22005,
+    "case": "PM3_5"
+  },
+  {
+    "session": "PM3",
+    "route": "2_2>3_2",
+    "ego_id": "v133",
+    "seed": 22006,
+    "case": "PM3_6"
+  },
+  {
+    "session": "PM3",
+    "route": "2_2>3_2",
+    "ego_id": "v169",
+    "seed": 22007,
+    "case": "PM3_7"
+  },
+  {
+    "session": "PM3",
+    "route": "3_3>1_1",
+    "ego_id": "v234",
+    "seed": 22008,
+    "case": "PM3_8"
+  },
+  {
+    "session": "PM3",
+    "route": "3_3>1_1",
+    "ego_id": "v349",
+    "seed": 22009,
+    "case": "PM3_9"
+  },
+  {
+    "session": "PM3",
+    "route": "3_3>2_1",
+    "ego_id": "v38",
+    "seed": 22010,
+    "case": "PM3_10"
+  },
+  {
+    "session": "PM3",
+    "route": "3_3>2_1",
+    "ego_id": "v2",
+    "seed": 22011,
+    "case": "PM3_11"
+  }
+]

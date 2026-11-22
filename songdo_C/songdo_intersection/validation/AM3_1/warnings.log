@@ -1,0 +1,5 @@
+Warning: Action step length '0.60' is used for vehicle type 'v1_type' but step-method.ballistic was not set. Setting it now to avoid collisions.
+Warning: Vehicle 'v14' performs emergency braking on lane '1_2_0' with decel=7.00, wished=3.50, severity=1.00, time=0.20.
+Warning: Vehicle 'v74' performs emergency braking on lane '2_2_0' with decel=7.00, wished=3.50, severity=1.00, time=37.80.
+Warning: Vehicle 'v169' performs emergency braking on lane '1_2_3' with decel=7.00, wished=3.50, severity=1.00, time=158.40.
+Warning: Vehicle 'v332' performs emergency braking on lane '3_3_2' with decel=7.00, wished=3.50, severity=1.00, time=904.00.

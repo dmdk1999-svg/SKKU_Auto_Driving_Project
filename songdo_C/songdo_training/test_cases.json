@@ -1,0 +1,338 @@
+[
+  {
+    "session": "PM4",
+    "route": "1_2>2_1",
+    "ego_id": "v197",
+    "seed": 22000,
+    "case": "PM4_0"
+  },
+  {
+    "session": "PM4",
+    "route": "1_2>2_1",
+    "ego_id": "v393",
+    "seed": 22001,
+    "case": "PM4_1"
+  },
+  {
+    "session": "PM4",
+    "route": "1_2>2_1",
+    "ego_id": "v133",
+    "seed": 22002,
+    "case": "PM4_2"
+  },
+  {
+    "session": "PM4",
+    "route": "1_2>2_1",
+    "ego_id": "v405",
+    "seed": 22003,
+    "case": "PM4_3"
+  },
+  {
+    "session": "PM4",
+    "route": "1_2>3_2",
+    "ego_id": "v194",
+    "seed": 22004,
+    "case": "PM4_4"
+  },
+  {
+    "session": "PM4",
+    "route": "1_2>3_2",
+    "ego_id": "v71",
+    "seed": 22005,
+    "case": "PM4_5"
+  },
+  {
+    "session": "PM4",
+    "route": "1_2>3_2",
+    "ego_id": "v186",
+    "seed": 22006,
+    "case": "PM4_6"
+  },
+  {
+    "session": "PM4",
+    "route": "1_2>3_2",
+    "ego_id": "v367",
+    "seed": 22007,
+    "case": "PM4_7"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>1_1",
+    "ego_id": "v338",
+    "seed": 22008,
+    "case": "PM4_8"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>1_1",
+    "ego_id": "v230",
+    "seed": 22009,
+    "case": "PM4_9"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>1_1",
+    "ego_id": "v74",
+    "seed": 22010,
+    "case": "PM4_10"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>1_1",
+    "ego_id": "v263",
+    "seed": 22011,
+    "case": "PM4_11"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>3_2",
+    "ego_id": "v423",
+    "seed": 22012,
+    "case": "PM4_12"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>3_2",
+    "ego_id": "v357",
+    "seed": 22013,
+    "case": "PM4_13"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>3_2",
+    "ego_id": "v299",
+    "seed": 22014,
+    "case": "PM4_14"
+  },
+  {
+    "session": "PM4",
+    "route": "2_2>3_2",
+    "ego_id": "v441",
+    "seed": 22015,
+    "case": "PM4_15"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>1_1",
+    "ego_id": "v298",
+    "seed": 22016,
+    "case": "PM4_16"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>1_1",
+    "ego_id": "v378",
+    "seed": 22017,
+    "case": "PM4_17"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>1_1",
+    "ego_id": "v60",
+    "seed": 22018,
+    "case": "PM4_18"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>1_1",
+    "ego_id": "v145",
+    "seed": 22019,
+    "case": "PM4_19"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>2_1",
+    "ego_id": "v297",
+    "seed": 22020,
+    "case": "PM4_20"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>2_1",
+    "ego_id": "v303",
+    "seed": 22021,
+    "case": "PM4_21"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>2_1",
+    "ego_id": "v127",
+    "seed": 22022,
+    "case": "PM4_22"
+  },
+  {
+    "session": "PM4",
+    "route": "3_3>2_1",
+    "ego_id": "v387",
+    "seed": 22023,
+    "case": "PM4_23"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>2_1",
+    "ego_id": "v193",
+    "seed": 22000,
+    "case": "PM5_0"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>2_1",
+    "ego_id": "v344",
+    "seed": 22001,
+    "case": "PM5_1"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>2_1",
+    "ego_id": "v147",
+    "seed": 22002,
+    "case": "PM5_2"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>2_1",
+    "ego_id": "v369",
+    "seed": 22003,
+    "case": "PM5_3"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>3_2",
+    "ego_id": "v322",
+    "seed": 22004,
+    "case": "PM5_4"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>3_2",
+    "ego_id": "v236",
+    "seed": 22005,
+    "case": "PM5_5"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>3_2",
+    "ego_id": "v337",
+    "seed": 22006,
+    "case": "PM5_6"
+  },
+  {
+    "session": "PM5",
+    "route": "1_2>3_2",
+    "ego_id": "v345",
+    "seed": 22007,
+    "case": "PM5_7"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>1_1",
+    "ego_id": "v287",
+    "seed": 22008,
+    "case": "PM5_8"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>1_1",
+    "ego_id": "v199",
+    "seed": 22009,
+    "case": "PM5_9"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>1_1",
+    "ego_id": "v68",
+    "seed": 22010,
+    "case": "PM5_10"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>1_1",
+    "ego_id": "v212",
+    "seed": 22011,
+    "case": "PM5_11"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>3_2",
+    "ego_id": "v194",
+    "seed": 22012,
+    "case": "PM5_12"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>3_2",
+    "ego_id": "v188",
+    "seed": 22013,
+    "case": "PM5_13"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>3_2",
+    "ego_id": "v149",
+    "seed": 22014,
+    "case": "PM5_14"
+  },
+  {
+    "session": "PM5",
+    "route": "2_2>3_2",
+    "ego_id": "v386",
+    "seed": 22015,
+    "case": "PM5_15"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>1_1",
+    "ego_id": "v192",
+    "seed": 22016,
+    "case": "PM5_16"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>1_1",
+    "ego_id": "v384",
+    "seed": 22017,
+    "case": "PM5_17"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>1_1",
+    "ego_id": "v379",
+    "seed": 22018,
+    "case": "PM5_18"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>1_1",
+    "ego_id": "v384",
+    "seed": 22019,
+    "case": "PM5_19"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>2_1",
+    "ego_id": "v55",
+    "seed": 22020,
+    "case": "PM5_20"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>2_1",
+    "ego_id": "v57",
+    "seed": 22021,
+    "case": "PM5_21"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>2_1",
+    "ego_id": "v54",
+    "seed": 22022,
+    "case": "PM5_22"
+  },
+  {
+    "session": "PM5",
+    "route": "3_3>2_1",
+    "ego_id": "v273",
+    "seed": 22023,
+    "case": "PM5_23"
+  }
+]

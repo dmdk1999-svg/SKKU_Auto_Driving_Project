@@ -1,0 +1,23 @@
+Loading net-file from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM1\../../network/C.net.xml' ... done (6ms).
+Loading additional-files from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM1\signals.add.xml' ... done (13ms).
+Loading route-files incrementally from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM1\traffic.rou.xml'
+Loading done.
+Simulation version 1.28.0 started with time: 0.00.
+Simulation ended at time: 2328.20.
+Reason: All vehicles have left the simulation.
+Performance:
+ Duration: 1.47s
+ Real time factor: 1589.22
+ UPS: 26935.153584
+Vehicles:
+ Inserted: 261
+ Running: 0
+ Waiting: 0
+Statistics (avg of 261):
+ RouteLength: 175.56
+ Speed: 9.55
+ Duration: 30.24
+ WaitingTime: 11.69
+ TimeLoss: 17.10
+ DepartDelay: 0.85
+Warning: Action step length '0.60' is used for vehicle type 'v1_type' but step-method.ballistic was not set. Setting it now to avoid collisions.

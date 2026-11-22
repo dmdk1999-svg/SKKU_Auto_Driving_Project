@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-11-22T23:31:19.209867+09:00 by Eclipse SUMO sumo 1.28.0
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\AM4\../../network/C.net.xml"/>
+        <route-files value="C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\AM4\traffic.rou.xml"/>
+        <additional-files value="C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\AM4\signals.add.xml"/>
+    </input>
+
+    <output>
+        <tripinfo-output value="C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\validation\AM4_1\trips.xml"/>
+        <collision-output value="C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\validation\AM4_1\collisions.xml"/>
+        <statistic-output value="C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\validation\AM4_1\statistics.xml"/>
+    </output>
+
+    <time>
+        <end value="2327.1170000000056"/>
+        <step-length value=".2"/>
+    </time>
+
+    <processing>
+        <lateral-resolution value=".2"/>
+        <collision.action value="warn"/>
+        <collision.check-junctions value="true"/>
+        <collision.mingap-factor value="0"/>
+        <time-to-teleport value="-1"/>
+    </processing>
+
+    <report>
+        <error-log value="C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\validation\AM4_1\warnings.log"/>
+        <duration-log.statistics value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+    <random_number>
+        <seed value="1"/>
+    </random_number>
+
+</sumoConfiguration>
+-->
+
+<statistics xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/statistic_file.xsd">
+    <performance clockBegin="124254.41" clockEnd="124255.76" clockDuration="1.35" traciDuration="15.22" realTimeFactor="1720.03" vehicleUpdatesPerSecond="27882.48" personUpdatesPerSecond="0.00" begin="0.00" end="2327.20" duration="2327.20"/>
+    <vehicles loaded="288" inserted="288" running="0" waiting="0"/>
+    <teleports total="0" jam="0" yield="0" wrongLane="0"/>
+    <safety collisions="0" emergencyStops="0" emergencyBraking="5"/>
+    <persons loaded="0" running="0" jammed="0"/>
+    <personTeleports total="0" abortWait="0" wrongDest="0"/>
+    <vehicleTripStatistics count="288" routeLength="179.40" speed="10.03" duration="26.20" waitingTime="8.31" timeLoss="13.83" departDelay="4.03" departDelayWaiting="-1.00" totalTravelTime="7545.00" totalDepartDelay="1160.58"/>
+    <pedestrianStatistics number="0" routeLength="0.00" duration="0.00" timeLoss="0.00"/>
+    <rideStatistics number="0"/>
+    <transportStatistics number="0"/>
+</statistics>
