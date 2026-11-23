@@ -44,14 +44,14 @@ TOTAL_TIMESTEPS = 200_000   # 총 학습 스텝 수
 REWARD_OVERRIDES = dict(
     speed_weight=0.1,          # 속도 보상 (스텝당 최대 이 값)
     collision_penalty=5.0,     # 충돌 시 -이 값, 즉시 종료
+    red_light_penalty=5.0,     # 적색 신호 통과 시 -이 값, 즉시 종료
     arrival_bonus=2.0,         # 완주 보너스
-    close_gap_threshold=6.0,   # 이 거리(m) 미만 접근 시
-    close_gap_penalty=0.1,     #   → 스텝당 감점
+    safe_gap_penalty=0.1,      # UN R157 최소 차간거리 위반 시 스텝당 최대 감점
+    overlap_penalty=0.05,      # 차선 경계에 걸친 폭에 비례한 스텝당 감점
     blocked_penalty=0.05,      # "느린 앞차에 막힘" 스텝당 감점 (추월 학습 핵심)
     blocked_gap=20.0,          #   막힘 판정: 앞차 이 거리 이내
     blocked_speed_frac=0.7,    #   그리고 내 속도 < vmax × 이 값
-    lane_change_penalty=0.0,   # 변경 실행당 감점 (커리큘럼: 초기 0,
-    invalid_action_penalty=0.0,#  추월 학습 후 지그재그 과하면 0.02~0.05)
+    invalid_action_penalty=0.0,# 도로 경계 밖 방향 횡가속 명령 감점
 )
 REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}
 
@@ -88,10 +88,11 @@ HPARAMS = dict(
     # ---- 네트워크 (utils/networks.py) ----
     hidden_sizes=(256, 256),
     activation="relu",       # "tanh" | "relu" | "elu"
-    policy_type="hybrid",      # "hybrid": 가감속 연속(Normal) + 차선 이산(Categorical)
-                               #   → 양자화 dead zone 제거. deterministic 평가에서도
-                               #     argmax로 차선변경이 실제로 나온다. (권장)
-                               # "gaussian": 예전 방식(전축 연속) — 비교 실험용
+    policy_type="gaussian",    # "gaussian": 종·횡 가감속 모두 연속(Normal).
+                               #   횡방향 행동이 횡가속도라 이 정책을 쓴다.
+                               # "hybrid": 차선 이산(Categorical) 행동 전용.
+                               #   현재 환경의 횡가속도 행동과는 맞지 않는다.
+                               #   (아래 lane_keep_bias, lane_entropy_coef는 hybrid 전용)
     lane_keep_bias=0.5,        # hybrid 차선 head의 "유지" 초기 편향.
                                #   0.5 → 초기 (좌27%/유지45%/우27%) ≈ 55% 변경 시도 (공격적)
                                #   1.0 → ≈32% 시도 (보수적)
