@@ -4,15 +4,17 @@ road_builder.build()가 ROAD["osm"]["enabled"]일 때 호출한다.
 
 처리 순서:
     1) env/osm/ 의 원본 OSM에서 쓸 도로만 고르고 구역 밖을 잘라낸다
-    2) 끊긴 램프(진출입 상대가 잘려나간 램프)를 제거한다
-    3) 모든 OSM 노드에 높이(ele)를 넣는다
+    2) 끊긴 램프(진출입 상대가 잘려나간 램프)를 제거하고, 다른 도로와 만나지 않는
+       말단부는 마지막 접속점에서 end_keep m만 남긴다
+    3) 차로 수와 포켓 차로(램프 앞 감속 차로, 좌회전 포켓)를 정한다
+    4) 모든 OSM 노드에 높이(ele)를 넣는다
          - low_ways(올림픽대로): z = 0
          - 나머지 본선: z = deck_height
          - 램프: 양 끝 높이 사이를 거리 비례로 이어 경사를 만든다
          - 다른 도로를 노드 공유 없이 가로지르는 구간: 차로가 적은 쪽을 더 올린다
-    4) netconvert로 highway.net.xml 컴파일 (진출 램프 앞에는 감속 차로 추가)
-    5) net_repair로 비정상 연결과 형상을 보정한다
-    6) 설정의 경로(way id 쌍)를 실제 edge 나열로 풀어 route/flow 블록을 만든다
+    5) netconvert로 highway.net.xml 컴파일 (진출 램프 앞에는 감속 차로 추가)
+    6) net_repair로 비정상 연결과 형상을 보정한다
+    7) 설정의 경로(way id 쌍)를 실제 edge 나열로 풀어 route/flow 블록을 만든다
 
 SUMO의 차량 상호작용은 차선/교차로 단위라서, 노드를 공유하지 않는 도로는
 xy가 겹쳐도 충돌하거나 앞차로 잡히지 않는다. 입체 교차는 이렇게 성립한다.
@@ -124,8 +126,98 @@ def _prune_dangling_ramps(root):
             return
 
 
-def _apply_road_attributes(root, cfg):
-    """OSM 태그 보정: 제한속도가 없는 도로의 기본값, 차로 수 상한, way별 차로 수."""
+def _new_node(root, xy, a: str, b: str, t: float) -> str:
+    """노드 a→b 사이 t 비율 위치에 새 노드를 만들고 id를 반환한다."""
+    nodes = {n.get("id"): n for n in root.findall("node")}
+    new = str(max(int(i) for i in nodes) + 1)
+    lerp = lambda key: float(nodes[a].get(key)) + t * (float(nodes[b].get(key)) - float(nodes[a].get(key)))
+    # 노드는 기존 노드 뒤, 첫 way 앞에 둔다 (맨 앞에 두면 netconvert가 기존 노드를 읽지 못한다)
+    first_way = list(root).index(root.find("way"))
+    root.insert(first_way, ET.Element("node", {"id": new, "lat": f"{lerp('lat'):.7f}",
+                                               "lon": f"{lerp('lon'):.7f}"}))
+    xy[new] = (xy[a][0] + t * (xy[b][0] - xy[a][0]), xy[a][1] + t * (xy[b][1] - xy[a][1]))
+    return new
+
+
+def _trim_ends(root, xy, keep: float, protected):
+    """다른 도로와 만나지 않는 말단부를 마지막 접속점에서 keep m만 남기고 자른다.
+
+    막다른 끝 노드에서 갈림 없이 이어지는 노드를 따라가 처음 만나는 접속점(이웃 노드
+    3개 이상)까지를 말단부로 본다. protected way(경로의 출발·도착 way)는 한 구간 이상 남긴다.
+    같은 도로의 상하행 끝이 나란히 있으면 둘 중 덜 잘리는 쪽에 맞춰 끝 위치를 맞춘다.
+    """
+    ways = root.findall("way")
+    adj, owner = {}, {}
+    name = {w.get("id"): _way_tags(w).get("name") for w in ways}
+    for w in ways:
+        refs = _way_refs(w)
+        for a, b in zip(refs, refs[1:]):
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+        for r in refs:
+            owner.setdefault(r, set()).add(w.get("id"))
+    tails = []                  # (끝 노드, 접속점 → 끝 노드 경로, 누적 거리, 자를 거리)
+    for end in [n for n, s in adj.items() if len(s) == 1]:
+        path, prev, cur = [end], None, end
+        while True:
+            nxt = [m for m in adj[cur] if m != prev]
+            if len(nxt) != 1:
+                break
+            prev, cur = cur, nxt[0]
+            path.append(cur)
+            if len(adj[cur]) != 2:
+                break
+        if len(adj[cur]) < 3:       # 접속점 없이 다른 끝으로 이어진 도로
+            continue
+        path.reverse()              # 접속점 → 끝
+        dist = [0.0]
+        for a, b in zip(path, path[1:]):
+            dist.append(dist[-1] + math.dist(xy[a], xy[b]))
+        cut = keep
+        for wid in protected:
+            on = sorted(d for n, d in zip(path, dist) if wid in owner[n])
+            if on:                  # 그 way의 첫 노드에서 20m는 남긴다
+                cut = max(cut, on[0] + 20.0)
+        tails.append([end, path, dist, cut])
+
+    # 상하행 끝 맞추기: 같은 이름, 끝 노드가 80m 안이면 잘라내는 길이를 작은 쪽에 맞춘다
+    road = lambda n: {name[w] for w in owner[n]}
+    for i, a in enumerate(tails):
+        for b in tails[i + 1:]:
+            if (road(a[0]) & road(b[0])) - {None} and math.dist(xy[a[0]], xy[b[0]]) < 80.0:
+                removed = min(a[2][-1] - a[3], b[2][-1] - b[3])
+                a[3], b[3] = a[2][-1] - removed, b[2][-1] - removed
+
+    drop, cuts = set(), {}      # cuts: (남는 노드, 지우는 노드) → 그 사이에 넣은 새 끝 노드
+    for _, path, dist, cut in tails:
+        k = next((i for i, d in enumerate(dist) if d > cut), None)
+        if k is None:
+            continue
+        drop.update(path[k:])
+        if cut - dist[k - 1] > 0.5:
+            a, b = path[k - 1], path[k]
+            cuts[(a, b)] = _new_node(root, xy, a, b, (cut - dist[k - 1]) / (dist[k] - dist[k - 1]))
+    for w in ways:
+        refs = _way_refs(w)
+        out = []
+        for i, r in enumerate(refs):
+            if r not in drop:
+                out.append(r)
+                continue
+            for n in (refs[i - 1] if i > 0 else None, refs[i + 1] if i + 1 < len(refs) else None):
+                if (n, r) in cuts:
+                    out.append(cuts[(n, r)])
+        if len(out) >= 2:
+            _set_refs(w, out)
+        else:
+            root.remove(w)
+
+
+def _apply_road_attributes(root, xy, cfg) -> dict:
+    """OSM 태그 보정: 제한속도가 없는 도로의 기본값, 차로 수 상한, way별 차로 수, 포켓 차로.
+
+    ({포켓 way id: (차로가 생기는 쪽, 목적지)}, {나뉘어 새로 생긴 way id: 원래 way id})를 반환한다.
+    """
     for way in root.findall("way"):
         tags = _way_tags(way)
         if "maxspeed" not in tags:
@@ -138,15 +230,19 @@ def _apply_road_attributes(root, cfg):
         lanes = cfg.get("way_lanes", {}).get(way.get("id"))
         if lanes:
             _set_tag(way, "lanes", str(lanes))
-    _apply_partial_lanes(root, cfg.get("way_lanes_until", {}))
+    origin = _apply_partial_lanes(root, cfg.get("way_lanes_until", {}))
+    pockets = _apply_pockets(root, xy, cfg.get("pocket_lanes", {}), origin)
+    return pockets, origin
 
 
-def _apply_partial_lanes(root, spec):
+def _apply_partial_lanes(root, spec) -> dict:
     """way의 시작부터 지정 노드까지만 차로 수를 바꾼다. {way id: (차로 수, 노드 id)}
 
     way를 그 노드에서 둘로 나눠 앞부분을 새 way(id = 기존 최대 id + 1)로 만든다.
+    {새 way id: 원래 way id}를 반환한다.
     """
     next_id = max(int(w.get("id")) for w in root.findall("way")) + 1
+    origin = {}
     for way in list(root.findall("way")):
         if way.get("id") not in spec:
             continue
@@ -155,11 +251,59 @@ def _apply_partial_lanes(root, spec):
         cut = refs.index(node)
         head = ET.fromstring(ET.tostring(way))
         head.set("id", str(next_id))
+        origin[str(next_id)] = way.get("id")
         next_id += 1
         _set_refs(head, refs[:cut + 1])
         _set_tag(head, "lanes", str(lanes))
         _set_refs(way, refs[cut:])
         root.append(head)
+    return origin
+
+
+def _apply_pockets(root, xy, spec, origin) -> dict:
+    """노드 앞 일정 길이에 차로를 하나 더한다 (램프 진입 전 감속 차로, 좌회전 포켓).
+
+    spec: {way id: [(노드 id, 길이 m, "right" | "left"[, 포켓 차로만 가는 way id]), ...]}
+    way를 노드 앞 길이 지점과 노드에서 나눠 가운데 조각(새 way)의 차로를 하나 늘린다.
+    {포켓 way id: (차로가 생기는 쪽, 목적지 way id 또는 None)}을 반환한다
+    (net_repair가 차로 연결에 쓴다).
+    """
+    next_id = max(int(w.get("id")) for w in root.findall("way")) + 1
+    sides = {}
+    for wid, items in spec.items():
+        for node, length, side, *target in items:
+            way = next(w for w in root.findall("way")
+                       if wid in (w.get("id"), origin.get(w.get("id"))) and node in _way_refs(w)[1:])
+            refs = _way_refs(way)
+            i = refs.index(node)
+            k, d = i, 0.0
+            while k > 0 and d + math.dist(xy[refs[k - 1]], xy[refs[k]]) < length:
+                d += math.dist(xy[refs[k - 1]], xy[refs[k]])
+                k -= 1
+            if k == 0:
+                head, start = [], refs[0]
+            else:
+                seg = math.dist(xy[refs[k - 1]], xy[refs[k]])
+                start = _new_node(root, xy, refs[k], refs[k - 1], (length - d) / seg)
+                head = refs[:k] + [start]
+            pieces = [(head, None), ([start] + refs[k:i + 1], "pocket"), (refs[i:], None)]
+            lanes = int(_way_tags(way).get("lanes", "1").split(";")[0])
+            first = True
+            for part, kind in pieces:
+                if len(part) < 2:
+                    continue
+                elem = way if first else ET.fromstring(ET.tostring(way))
+                if not first:
+                    elem.set("id", str(next_id))
+                    origin[str(next_id)] = origin.get(wid, wid)
+                    next_id += 1
+                    root.append(elem)
+                _set_refs(elem, part)
+                if kind:
+                    _set_tag(elem, "lanes", str(lanes + 1))
+                    sides[elem.get("id")] = (side, target[0] if target else None)
+                first = False
+    return sides
 
 
 def _segments_cross(a, b, c, d) -> bool:
@@ -250,7 +394,12 @@ def write_network(out_dir: str, cfg: dict) -> str:
 
     _select_ways(root, xy, cfg)
     _prune_dangling_ramps(root)
-    _apply_road_attributes(root, cfg)
+    _trim_ends(root, xy, float(cfg["end_keep"]),
+               {w for pair in cfg["routes"].values() for w in pair})
+    pockets, origin = _apply_road_attributes(root, xy, cfg)
+    pieces = lambda wid: {w.get("id") for w in root.findall("way")
+                          if origin.get(w.get("id"), w.get("id")) == wid}
+    drops = [(pieces(a), pieces(b)) for a, b in cfg.get("drop_connections", [])]
     _assign_elevation(root, xy, cfg)
 
     osm_path = os.path.join(out_dir, "highway.osm.xml")
@@ -271,24 +420,27 @@ def write_network(out_dir: str, cfg: dict) -> str:
             "-o", net_path]
     subprocess.run(args + ["--ramps.guess", "false"], check=True, capture_output=True)
 
-    # 진출 램프 앞에만 감속 차로를 추가한다. 합류 램프는 차로를 늘리지 않고
-    # 본선 맨 오른쪽 차로로 합류시키므로 ramp guessing에서 제외한다.
+    # 진출 램프 앞에는 감속 차로를 추가한다. 합류 램프는 accel_lane_roads 본선이면
+    # 가속 차로를 두고, 아니면 차로를 늘리지 않고 본선 맨 오른쪽 차로로 합류시킨다.
     on_ramps = _on_ramp_edges(net_path)
+    accel = [e for e, name in on_ramps if name in cfg["accel_lane_roads"]]
+    plain = [e for e, name in on_ramps if name not in cfg["accel_lane_roads"]]
     subprocess.run(args + ["--ramps.guess", "true",
-                           "--ramps.unset", ",".join(on_ramps)],
+                           "--ramps.set", ",".join(accel),
+                           "--ramps.unset", ",".join(plain)],
                    check=True, capture_output=True)
-    net_repair.repair(net_path, out_dir)
+    net_repair.repair(net_path, out_dir, pockets, drops)
     return net_path
 
 
 def _on_ramp_edges(net_path: str) -> list:
-    """램프가 합류한 직후의 본선 edge id 목록 (들어오는 edge 2개 중 하나가 램프인 노드의 나가는 edge)."""
+    """램프가 합류한 직후의 본선 (edge id, 도로 이름) 목록 (들어오는 edge 2개 중 하나가 램프인 노드의 나가는 edge)."""
     net = sumolib.net.readNet(net_path, withInternal=False)
     edges = []
     for node in net.getNodes():
         inc, out = node.getIncoming(), node.getOutgoing()
         if len(inc) == 2 and len(out) == 1 and any("link" in e.getType() for e in inc):
-            edges.append(out[0].getID())
+            edges.append((out[0].getID(), out[0].getName()))
     return edges
 
 

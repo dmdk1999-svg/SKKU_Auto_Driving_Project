@@ -3,6 +3,7 @@
 osm_road.write_network()가 도로망을 만든 직후 호출한다. OSM 형상은 정확하지
 않으므로 OSM과 비교하지 않고, 만들어진 도로망 자체에서 이상한 곳을 찾아 고친다.
 
+    0) 중앙 간격: 같은 도로의 반대 방향 차도 사이 간격을 일정하게 맞춘다.
     1) 겹침: 서로 연결되지 않은 도로가 같은 높이에서 겹치면 떼어 놓는다.
          - 같은 도로의 반대 방향 차도끼리 겹치면 양쪽을 절반씩 바깥으로 민다.
          - 같은 방향으로 나란히 겹치면 차로가 적은 쪽을 민다.
@@ -33,17 +34,28 @@ FLAT = 20.0     # edge 양 끝에서 높이를 바꾸지 않는 거리 (접속�
 SPREAD = 0.15   # 떼어 놓은 거리를 앞뒤로 줄여 가는 기울기
 TAPER = 40.0    # 끝점 이동을 형상에 나눠 싣는 거리 (m)
 PUSH_IN = 30.0  # 램프를 본선 바깥으로 미는 거리를 노드에서부터 채워 가는 거리 (m)
+MEDIAN = 2.0        # 같은 도로 반대 방향 차도 사이 간격 (m)
+MEDIAN_MAX = 15.0   # 이보다 멀리 떨어진 구간은 실제로 갈라진 것으로 보고 두는 간격 (m)
+MEDIAN_SMOOTH = 60.0  # 간격 조정량을 앞뒤로 평균 내는 구간 길이 (m)
 
 
-def repair(net_path: str, out_dir: str):
-    """도로망을 제자리에서 보정한다."""
+def repair(net_path: str, out_dir: str, pockets: dict = None, drops=()):
+    """도로망을 제자리에서 보정한다.
+
+    pockets: {포켓 way id: ("right" | "left", 목적지 way id 또는 None)}. 그 way의 edge는
+    앞 edge보다 차로가 하나 많고, 늘어난 차로가 그쪽에 생긴다. 목적지가 있으면 포켓
+    차로는 그 way로만 가고 나머지 차로는 그 way로 가지 않는다.
+    drops: [(출발 way id 집합, 도착 way id 집합)]. 그 사이의 연결을 모두 지운다.
+    """
+    pockets = pockets or {}
+    _apply(net_path, out_dir, _even_medians(net_path), {})
     # 접속부 보정으로 램프가 밀려나 새로 겹칠 수 있어 겹침 처리를 다시 한 뒤 한 번 더 정렬한다
     for steps in (("separate", "junctions", "junctions"), ("separate", "junctions")):
         for step in steps:
             if step == "separate":
                 _apply(net_path, out_dir, _separate(net_path), {})
             else:
-                _apply(net_path, out_dir, *_fix_junctions(net_path))
+                _apply(net_path, out_dir, *_fix_junctions(net_path, pockets, drops))
 
 
 # ── 도로망 읽기 ─────────────────────────────────────────────────
@@ -169,6 +181,66 @@ def _spread(values, ds: float, slope: float):
     return out
 
 
+# ── 0) 중앙 간격 ────────────────────────────────────────────────
+
+def _even_medians(net_path: str) -> dict:
+    """같은 이름 도로의 반대 방향 차도 사이 간격을 MEDIAN으로 맞춘 edge 형상.
+
+    각 차도가 어긋난 간격의 절반씩 움직인다. MEDIAN_MAX보다 먼 구간은 건드리지 않는다.
+    한 OSM way에서 나온 양방향 도로(id가 X / -X)는 차로가 edge 형상 오른쪽으로 펼쳐져
+    붙어 있으므로, 차도 중심(형상에서 center 만큼 오른쪽)을 기준으로 간격을 잰다.
+    """
+    net, shapes, lanes = _load(net_path)
+    named = defaultdict(list)
+    for e in net.getEdges():
+        if e.getName():
+            named[e.getName()].append(e)
+
+    def center(e):
+        """edge 형상에서 차도 중심까지 오른쪽 거리 (형상 가운데 지점 기준)."""
+        sh = shapes[e.getID()]
+        outer = [lanes[f"{e.getID()}_{i}"] for i in (0, e.getLaneNumber() - 1)]
+        mids = [s[len(s) // 2] for s in outer]
+        return sum(_project(sh, m)[0] for m in mids) / 2
+    centers = {e.getID(): center(e) for e in net.getEdges()}
+
+    out = {}
+    for e in net.getEdges():
+        twins = [o for o in named.get(e.getName(), []) if o is not e]
+        if not twins:
+            continue
+        pts = _densify(shapes[e.getID()])
+        moves = []
+        for i, p in enumerate(pts):
+            edir = _direction(pts, i)
+            c = centers[e.getID()]
+            pc = (p[0] + edir[1] * c, p[1] - edir[0] * c)     # 차도 중심 (오른쪽 = (dy, -dx))
+            best = None
+            for o in twins:
+                off, _, right, odir, _, where = _project(shapes[o.getID()], pc)
+                off -= centers[o.getID()]
+                gap = abs(off) - (_width(e) + _width(o)) / 2
+                if where != "in" or edir[0] * odir[0] + edir[1] * odir[1] > -0.8 or gap > MEDIAN_MAX:
+                    continue
+                if best is None or gap < best[0]:
+                    sign = 1.0 if off >= 0 else -1.0    # o에서 멀어지는 쪽
+                    best = (gap, (right[0] * sign, right[1] * sign))
+            if best is None:
+                moves.append((0.0, 0.0))
+            else:
+                amount = (MEDIAN - best[0]) / 2
+                moves.append((best[1][0] * amount, best[1][1] * amount))
+        if max(math.hypot(*m) for m in moves) < 0.2:
+            continue
+        half = int(MEDIAN_SMOOTH / STEP / 2)
+        for i, p in enumerate(pts):
+            win = moves[max(0, i - half):i + half + 1]
+            p[0] += sum(m[0] for m in win) / len(win)
+            p[1] += sum(m[1] for m in win) / len(win)
+        out[e.getID()] = pts
+    return out
+
+
 # ── 1) 겹침 ─────────────────────────────────────────────────────
 
 def _separate(net_path: str) -> dict:
@@ -274,13 +346,26 @@ def _chain(edge, forward: bool, limit: float = 150.0):
     return chain if forward else chain[::-1]
 
 
+def _fill(pairs, n_from: int, skip=()):
+    """어디로도 이어지지 않는 차로(0..n_from-1, skip 제외)를 가장 가까운 차로의 목적지로 합류시킨다."""
+    pairs = set(pairs)
+    linked = {f: t for f, t in sorted(pairs)}
+    if not linked:
+        return pairs
+    for f in range(n_from):
+        if f not in linked and f not in skip:
+            near = min(linked, key=lambda g: abs(g - f))
+            pairs.add((f, linked[near]))
+    return pairs
+
+
 def _outer_lanes(n: int, k: int, side: int):
     """n차로 중 side 쪽 바깥 k개 차로 번호 (오른쪽 차로부터)."""
     k = min(k, n)
     return list(range(k)) if side > 0 else list(range(n - k, n))
 
 
-def _fix_junctions(net_path: str):
+def _fix_junctions(net_path: str, pockets: dict, drops):
     net, shapes, lanes = _load(net_path)
     cur = {}
     for e in net.getEdges():
@@ -322,6 +407,32 @@ def _fix_junctions(net_path: str):
     def rank(e):
         return (e.getLaneNumber(), "link" not in e.getType(), e.getID())
 
+    base = lambda e: e.getID().lstrip("-").partition("#")[0]
+    for e in net.getEdges():                        # 목적지가 정해진 포켓 차로
+        side, target = pockets.get(base(e), (None, None))
+        if not target:
+            continue
+        n = e.getLaneNumber()
+        pocket = n - 1 if side == "left" else 0
+        others = [o for o in e.getOutgoing() if base(o) != target]
+        for o in e.getOutgoing():
+            key = (e.getID(), o.getID())
+            pairs = cur.get(key, set())
+            if base(o) == target:                   # 포켓 차로가 목적지의 모든 차로로 갈라진다
+                new[key] = {(pocket, t) for t in range(o.getLaneNumber())}
+            elif len(others) == 1 and o.getLaneNumber() == n - 1:   # 나머지 차로는 그대로 이어진다
+                shift = 1 if pocket == 0 else 0
+                new[key] = {(j + shift, j) for j in range(n - 1)}
+            else:
+                new[key] = {(f, t) for f, t in pairs if f != pocket}
+        # 이 때문에 끊긴 차로는 가장 가까운 차로의 목적지(목적지 way 제외)로 잇는다
+        keys = [(e.getID(), o.getID()) for o in e.getOutgoing() if base(o) != target]
+        targets = {f: (k, t) for k in keys for f, t in sorted(new[k])}
+        for f in range(n):
+            if f != pocket and f not in targets and targets:
+                k, t = targets[min(targets, key=lambda g: abs(g - f))]
+                new[k] = new[k] | {(f, t)}
+
     for node in net.getNodes():
         inc, out = node.getIncoming(), node.getOutgoing()
         if node.getType() == "traffic_light" and not (len(inc) == 1 and len(out) == 1):
@@ -340,8 +451,18 @@ def _fix_junctions(net_path: str):
                 main_pairs = {(j, j + shift) for j in range(m)}
             elif m == n:
                 main_pairs = {(j, j) for j in range(m)}
+            elif m + k < n:
+                # 합류 후 늘어나는 차로는 램프 쪽에 생긴다: 램프 바깥 차로가 여러 차로로 갈라진다
+                extra = n - m - k
+                if side > 0:
+                    br_pairs = {(0, t) for t in range(extra + 1)} | {(i, i + extra) for i in range(1, k)}
+                    main_pairs = {(j, j + k + extra) for j in range(m)}
+                else:
+                    br_pairs = ({(i, m + i) for i in range(k - 1)}
+                                | {(k - 1, t) for t in range(m + k - 1, n)})
+                    main_pairs = {(j, j) for j in range(m)}
             else:
-                main_pairs = cur.get((main.getID(), o.getID()), set())
+                main_pairs = _fill(cur.get((main.getID(), o.getID()), set()), m)
             new[(main.getID(), o.getID())] = main_pairs
             new[(br.getID(), o.getID())] = br_pairs
             d_out = gap(main.getID(), o.getID(), main_pairs)
@@ -353,7 +474,7 @@ def _fix_junctions(net_path: str):
             d_br = gap(br.getID(), o.getID(), br_pairs, extra=extra)
             end_shift[br.getID()] = (-d_br[0], -d_br[1])
             pushes.append((br, main, side, (_width(main) + _width(br)) / 2, True))
-        elif len(inc) == 1 and len(out) == 2:           # 분기
+        elif len(inc) == 1 and len(out) == 2 and not pockets.get(base(inc[0]), (None, None))[1]:   # 분기
             i_e = inc[0]
             main, br = sorted(out, key=rank, reverse=True)
             n, m, k = i_e.getLaneNumber(), main.getLaneNumber(), br.getLaneNumber()
@@ -367,8 +488,9 @@ def _fix_junctions(net_path: str):
                 main_pairs = {(j, j) for j in range(m)}
                 br_pairs = {(outer[min(i, len(outer) - 1)], i) for i in range(k)}
             else:
-                main_pairs = cur.get((i_e.getID(), main.getID()), set())
                 br_pairs = cur.get((i_e.getID(), br.getID()), set())
+                used = {f for f, _ in br_pairs}
+                main_pairs = _fill(cur.get((i_e.getID(), main.getID()), set()), n, skip=used)
             new[(i_e.getID(), main.getID())] = main_pairs
             new[(i_e.getID(), br.getID())] = br_pairs
             start_shift[main.getID()] = gap(i_e.getID(), main.getID(), main_pairs)
@@ -380,21 +502,39 @@ def _fix_junctions(net_path: str):
             pushes.append((br, main, side, (_width(main) + _width(br)) / 2, False))
         elif len(inc) == 1 and len(out) == 1:           # 이어지는 도로
             a, b = inc[0], out[0]
-            pairs = set(cur.get((a.getID(), b.getID()), set()))
+            pairs = cur.get((a.getID(), b.getID()), set())
             if not pairs:
                 continue
-            linked = {f: t for f, t in sorted(pairs)}
-            for f in range(a.getLaneNumber()):          # 끊긴 차로는 가장 가까운 차로의 목적지로 합류
-                if f not in linked:
-                    near = min(linked, key=lambda g: abs(g - f))
-                    pairs.add((f, linked[near]))
+            n = a.getLaneNumber()
+            pocket = pockets.get(base(b), (None, None))[0]
+            if pocket and b.getLaneNumber() == n + 1:
+                # 포켓 차로: 본선 차로는 그대로 잇고 바깥 차로 하나가 두 차로로 갈라진다
+                pairs = ({(j, j + 1) for j in range(n)} | {(0, 0)} if pocket == "right"
+                         else {(j, j) for j in range(n)} | {(n - 1, n)})
+            else:
+                pairs = _fill(pairs, n)
             new[(a.getID(), b.getID())] = pairs
             one_to_one = {(f, t) for f, t in pairs if sum(1 for g, _ in pairs if g == f) == 1
                           and sum(1 for _, u in pairs if u == t) == 1}
             start_shift[b.getID()] = gap(a.getID(), b.getID(), one_to_one or pairs)
 
+    for a, b in new:                                # 설정에서 막은 연결
+        if any(base(net.getEdge(a)) in fs and base(net.getEdge(b)) in ts for fs, ts in drops):
+            new[(a, b)] = set()
+
+    # 위 경우에 해당하지 않는 접속부에서도 끊긴 차로는 가장 가까운 차로의 목적지로 합류시킨다
+    for e in net.getEdges():
+        if e.getToNode().getType() == "traffic_light":
+            continue
+        keys = [(e.getID(), t.getID()) for t in e.getOutgoing()]
+        targets = {f: (k, t) for k in keys for f, t in sorted(new.get(k, set()))}
+        for f in range(e.getLaneNumber()):
+            if targets and f not in targets:
+                k, t = targets[min(targets, key=lambda g: abs(g - f))]
+                new[k] = set(new.get(k, set())) | {(f, t)}
+
     shapes_out = {}
-    for eid in set(start_shift) | set(end_shift):
+    for eid in sorted(set(start_shift) | set(end_shift)):
         ds = start_shift.get(eid, (0.0, 0.0))
         de = end_shift.get(eid, (0.0, 0.0))
         if math.hypot(*ds) < 0.1 and math.hypot(*de) < 0.1:
