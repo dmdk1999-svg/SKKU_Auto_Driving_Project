@@ -109,8 +109,10 @@ class SumoHighwayEnv(gym.Env):
         #   좌/우 양쪽으로 변경 여지가 대칭으로 생긴다 (탐험에 유리).
         _dl = ego["depart_lane"]
         if osm:
-            # 경로마다 차선 수가 달라서 비어 있는 차선으로 출발한다
-            self.ego_depart_lane = "free"
+            # 경로마다 차선 수가 달라서, 경로를 따라 차선 변경이 가장 적게 필요한
+            # 차선으로 출발한다 ("free"는 출발 구간이 짧으면 따라갈 수 없는 차선을
+            # 골라 SUMO가 투입을 거부할 수 있다)
+            self.ego_depart_lane = "best"
         elif str(_dl).lower() == "center":
             self.ego_depart_lane = str(int(road["num_lanes"]) // 2)
         else:
