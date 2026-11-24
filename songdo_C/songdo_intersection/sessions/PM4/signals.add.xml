@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<additional>
+  <tlLogic id="C" type="static" programID="reconstructed" offset="28">
+    <phase duration="128" state="GGGrrrrGGGG" />
+    <phase duration="3" state="yyyrrrryyyy" />
+    <phase duration="2" state="rrrrrrrrrrr" />
+    <phase duration="17" state="rrrGrrrrrrr" />
+    <phase duration="3" state="rrryrrrrrrr" />
+    <phase duration="2" state="rrrrrrrrrrr" />
+    <phase duration="20" state="rrrrGGGrrrr" />
+    <phase duration="3" state="rrrryyyrrrr" />
+    <phase duration="2" state="rrrrrrrrrrr" />
+  </tlLogic>
+</additional>

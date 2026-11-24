@@ -1,0 +1,17 @@
+{
+  "kind": "human",
+  "seed": 2,
+  "epochs": 50,
+  "train_rows": 52091,
+  "validation_rows": 11368,
+  "dimensions": 86,
+  "batch_size": 256,
+  "learning_rate": 0.0003,
+  "validation": [
+    "PM3"
+  ],
+  "test_sessions_excluded": [
+    "PM4",
+    "PM5"
+  ]
+}

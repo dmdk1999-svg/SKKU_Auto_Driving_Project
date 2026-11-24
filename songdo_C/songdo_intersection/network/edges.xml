@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<edges>
+  <edge id="1_1" from="C" to="1_1_boundary" numLanes="3" width="2.940870127438997" speed="16.67" spreadType="center" shape="93.1558,92.5056 125.0136,129.6990" />
+  <edge id="1_2" from="1_2_boundary" to="C" numLanes="4" width="2.9674091499774" speed="16.67" spreadType="center" shape="115.9302,135.6577 93.3842,109.5053" />
+  <edge id="2_1" from="C" to="2_1_boundary" numLanes="3" width="2.951098732188349" speed="16.67" spreadType="center" shape="70.4725,85.5364 -35.9817,-37.6889" />
+  <edge id="2_2" from="2_2_boundary" to="C" numLanes="3" width="3.0262395541814486" speed="16.67" spreadType="center" shape="-36.1072,-57.2956 73.1316,69.2589" />
+  <edge id="3_1" from="C" to="east_split" numLanes="2" width="3.0592261117672988" speed="16.67" spreadType="center" shape="88.0071,76.3636 106.4041,59.6540" />
+  <edge id="3_2" from="east_split" to="3_exit" numLanes="3" width="2.9219555764271687" speed="16.67" spreadType="center" shape="106.4041,59.6540 131.9873,36.5886" />
+  <edge id="3_3" from="3_3_boundary" to="C" numLanes="3" width="2.9936967012865296" speed="16.67" spreadType="center" shape="140.4528,41.6789 101.0749,75.6103" />
+</edges>

@@ -1,0 +1,15 @@
+{
+  "kind": "original",
+  "seed": 1,
+  "epochs": 50,
+  "train_rows": 3809,
+  "validation_rows": 1132,
+  "dimensions": 31,
+  "batch_size": 256,
+  "learning_rate": 0.0003,
+  "validation": "20% episode split",
+  "test_sessions_excluded": [
+    "PM4",
+    "PM5"
+  ]
+}

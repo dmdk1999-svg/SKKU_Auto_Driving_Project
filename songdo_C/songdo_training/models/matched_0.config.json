@@ -1,0 +1,17 @@
+{
+  "kind": "matched",
+  "seed": 0,
+  "epochs": 50,
+  "train_rows": 34863,
+  "validation_rows": 6085,
+  "dimensions": 86,
+  "batch_size": 256,
+  "learning_rate": 0.0003,
+  "validation": [
+    "PM3"
+  ],
+  "test_sessions_excluded": [
+    "PM4",
+    "PM5"
+  ]
+}

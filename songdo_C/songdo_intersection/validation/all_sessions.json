@@ -1,0 +1,241 @@
+[
+  {
+    "session": "AM1",
+    "seed": 1,
+    "expected": 165,
+    "arrived": 165,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "3_3>1_1": 4,
+      "2_2>1_1": 96,
+      "2_2>3_2": 5,
+      "1_2>2_1": 51,
+      "1_2>3_2": 7,
+      "3_3>2_1": 2
+    },
+    "stopped_vehicles": 101,
+    "mean_wait_s": 16.721212121212123,
+    "max_depart_delay_s": 64.14
+  },
+  {
+    "session": "AM2",
+    "seed": 1,
+    "expected": 390,
+    "arrived": 390,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 180,
+      "1_2>2_1": 182,
+      "2_2>3_2": 1,
+      "1_2>3_2": 13,
+      "3_3>1_1": 2,
+      "3_3>2_1": 12
+    },
+    "stopped_vehicles": 78,
+    "mean_wait_s": 6.377435897435897,
+    "max_depart_delay_s": 39.0
+  },
+  {
+    "session": "AM3",
+    "seed": 1,
+    "expected": 345,
+    "arrived": 345,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 151,
+      "1_2>2_1": 160,
+      "1_2>3_2": 13,
+      "3_3>1_1": 4,
+      "3_3>2_1": 10,
+      "2_2>3_2": 7
+    },
+    "stopped_vehicles": 103,
+    "mean_wait_s": 10.529855072463768,
+    "max_depart_delay_s": 64.62
+  },
+  {
+    "session": "AM4",
+    "seed": 1,
+    "expected": 288,
+    "arrived": 288,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 149,
+      "1_2>2_1": 115,
+      "1_2>3_2": 9,
+      "3_3>2_1": 7,
+      "2_2>3_2": 6,
+      "3_3>1_1": 2
+    },
+    "stopped_vehicles": 68,
+    "mean_wait_s": 8.31111111111111,
+    "max_depart_delay_s": 48.8
+  },
+  {
+    "session": "AM5",
+    "seed": 1,
+    "expected": 215,
+    "arrived": 215,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 121,
+      "1_2>2_1": 74,
+      "3_3>1_1": 2,
+      "3_3>2_1": 10,
+      "2_2>3_2": 5,
+      "1_2>3_2": 3
+    },
+    "stopped_vehicles": 86,
+    "mean_wait_s": 9.59627906976744,
+    "max_depart_delay_s": 21.94
+  },
+  {
+    "session": "PM1",
+    "seed": 1,
+    "expected": 261,
+    "arrived": 261,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 145,
+      "1_2>2_1": 84,
+      "2_2>3_2": 10,
+      "1_2>3_2": 4,
+      "3_3>1_1": 4,
+      "3_3>2_1": 14
+    },
+    "stopped_vehicles": 86,
+    "mean_wait_s": 11.691954022988506,
+    "max_depart_delay_s": 29.38
+  },
+  {
+    "session": "PM2",
+    "seed": 1,
+    "expected": 139,
+    "arrived": 139,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 72,
+      "1_2>2_1": 53,
+      "2_2>3_2": 7,
+      "1_2>3_2": 3,
+      "3_3>2_1": 4
+    },
+    "stopped_vehicles": 39,
+    "mean_wait_s": 8.74388489208633,
+    "max_depart_delay_s": 3.2
+  },
+  {
+    "session": "PM3",
+    "seed": 1,
+    "expected": 318,
+    "arrived": 318,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 172,
+      "1_2>2_1": 114,
+      "2_2>3_2": 9,
+      "1_2>3_2": 12,
+      "3_3>1_1": 5,
+      "3_3>2_1": 6
+    },
+    "stopped_vehicles": 119,
+    "mean_wait_s": 13.686792452830188,
+    "max_depart_delay_s": 28.05
+  },
+  {
+    "session": "PM4",
+    "seed": 1,
+    "expected": 357,
+    "arrived": 357,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "3_3>1_1": 12,
+      "2_2>1_1": 201,
+      "3_3>2_1": 9,
+      "1_2>2_1": 109,
+      "2_2>3_2": 12,
+      "1_2>3_2": 14
+    },
+    "stopped_vehicles": 93,
+    "mean_wait_s": 11.22016806722689,
+    "max_depart_delay_s": 49.83
+  },
+  {
+    "session": "PM5",
+    "seed": 1,
+    "expected": 327,
+    "arrived": 327,
+    "collisions": 0,
+    "teleports": {
+      "total": "0",
+      "jam": "0",
+      "yield": "0",
+      "wrongLane": "0"
+    },
+    "route_arrivals": {
+      "2_2>1_1": 164,
+      "1_2>2_1": 131,
+      "2_2>3_2": 9,
+      "3_3>2_1": 9,
+      "1_2>3_2": 11,
+      "3_3>1_1": 3
+    },
+    "stopped_vehicles": 120,
+    "mean_wait_s": 12.753516819571864,
+    "max_depart_delay_s": 36.16
+  }
+]

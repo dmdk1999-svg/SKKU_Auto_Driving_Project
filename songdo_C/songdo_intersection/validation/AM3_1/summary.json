@@ -1,0 +1,24 @@
+{
+  "session": "AM3",
+  "seed": 1,
+  "expected": 345,
+  "arrived": 345,
+  "collisions": 0,
+  "teleports": {
+    "total": "0",
+    "jam": "0",
+    "yield": "0",
+    "wrongLane": "0"
+  },
+  "route_arrivals": {
+    "2_2>1_1": 151,
+    "1_2>2_1": 160,
+    "1_2>3_2": 13,
+    "3_3>1_1": 4,
+    "3_3>2_1": 10,
+    "2_2>3_2": 7
+  },
+  "stopped_vehicles": 103,
+  "mean_wait_s": 10.529855072463768,
+  "max_depart_delay_s": 64.62
+}

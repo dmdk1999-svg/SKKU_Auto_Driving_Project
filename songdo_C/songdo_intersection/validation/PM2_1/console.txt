@@ -1,0 +1,27 @@
+Loading net-file from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM2\../../network/C.net.xml' ... done (5ms).
+Loading additional-files from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM2\signals.add.xml' ... done (10ms).
+Loading route-files incrementally from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM2\traffic.rou.xml'
+Loading done.
+Simulation version 1.28.0 started with time: 0.00.
+Simulation ended at time: 1425.40.
+Reason: All vehicles have left the simulation.
+Performance:
+ Duration: 0.63s
+ Real time factor: 2251.82
+ UPS: 29127.962085
+Vehicles:
+ Inserted: 139
+ Running: 0
+ Waiting: 0
+ Emergency Braking: 3
+Statistics (avg of 139):
+ RouteLength: 179.90
+ Speed: 10.41
+ Duration: 26.53
+ WaitingTime: 8.74
+ TimeLoss: 13.36
+ DepartDelay: 0.20
+Warning: Action step length '0.60' is used for vehicle type 'v1_type' but step-method.ballistic was not set. Setting it now to avoid collisions.
+Warning: Vehicle 'v3' performs emergency braking on lane '2_2_2' with decel=7.00, wished=3.50, severity=1.00, time=0.20.
+Warning: Vehicle 'v1' performs emergency braking on lane '2_2_1' with decel=7.00, wished=3.50, severity=1.00, time=0.20.
+Warning: Vehicle 'v19' performs emergency braking on lane '1_2_1' with decel=7.00, wished=3.50, severity=1.00, time=0.20.

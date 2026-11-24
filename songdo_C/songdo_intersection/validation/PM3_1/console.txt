@@ -1,0 +1,25 @@
+Loading net-file from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM3\../../network/C.net.xml' ... done (3ms).
+Loading additional-files from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM3\signals.add.xml' ... done (13ms).
+Loading route-files incrementally from 'C:\Users\신민지\Documents\Codex\2026-11-22\https-github-com-bmil-ssu-artificial\outputs\songdo_intersection\sessions\PM3\traffic.rou.xml'
+Loading done.
+Simulation version 1.28.0 started with time: 0.00.
+Simulation ended at time: 2330.20.
+Reason: All vehicles have left the simulation.
+Performance:
+ Duration: 1.65s
+ Real time factor: 1409.68
+ UPS: 32093.163944
+Vehicles:
+ Inserted: 318
+ Running: 0
+ Waiting: 0
+ Emergency Braking: 1
+Statistics (avg of 318):
+ RouteLength: 178.57
+ Speed: 9.05
+ Duration: 33.36
+ WaitingTime: 13.69
+ TimeLoss: 20.07
+ DepartDelay: 1.69
+Warning: Action step length '0.60' is used for vehicle type 'v1_type' but step-method.ballistic was not set. Setting it now to avoid collisions.
+Warning: Vehicle 'v2' performs emergency braking on lane '3_3_2' with decel=7.00, wished=3.50, severity=1.00, time=0.20.

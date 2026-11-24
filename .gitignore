@@ -2,5 +2,10 @@
 __pycache__/
 *.pyc
 
+uv.lock
+
 # 학습 결과 (새 run은 공유하지 않음)
 results/
+
+# SUMO 도로망 (실행할 때마다 env/road_config.py와 env/osm/ 원본으로 다시 생성)
+env/sumo/

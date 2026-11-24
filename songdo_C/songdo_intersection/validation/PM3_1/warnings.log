@@ -1,0 +1,2 @@
+Warning: Action step length '0.60' is used for vehicle type 'v1_type' but step-method.ballistic was not set. Setting it now to avoid collisions.
+Warning: Vehicle 'v2' performs emergency braking on lane '3_3_2' with decel=7.00, wished=3.50, severity=1.00, time=0.20.
