@@ -29,6 +29,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 from algorithms.bc import BCPolicy
+from env.mdp_config import ACTION
 
 
 BASE = Path(__file__).resolve().parent
@@ -88,9 +89,9 @@ def load_data(path):
             f"observation shape은 (N, state_dim)이어야 합니다. 현재 shape={obs.shape}"
         )
 
-    if actions.ndim != 2 or actions.shape[1] != 2:
+    if actions.ndim != 2 or actions.shape[1] != ACTION["dim"]:
         raise ValueError(
-            f"action_raw shape은 (N, 2)이어야 합니다. 현재 shape={actions.shape}"
+            f"action_raw shape은 (N, {ACTION['dim']})이어야 합니다. 현재 shape={actions.shape}"
         )
 
     if len(actions) != n or episodes.shape != (n,):

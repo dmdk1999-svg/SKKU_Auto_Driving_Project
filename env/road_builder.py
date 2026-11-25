@@ -102,17 +102,18 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
         total_p = sum(float(c.get("probability", 1.0))
                       for c in controllers.values())
         vtype_lines = []
+        gaps = npc_min_gaps(traffic)
         for name, c in controllers.items():
             prob = float(c.get("probability", 1.0)) / total_p
             attrs = [
-                f'id="car_{name}"',
-                f'probability="{prob:.4f}"',
                 f'carFollowModel="{c["carFollowModel"]}"',
                 f'laneChangeModel="{lc_model}"',
                 f'accel="{c.get("accel", 2.5)}"',
                 f'decel="{c.get("decel", 4.5)}"',
                 f'tau="{c.get("tau", 1.0)}"',
-                f'minGap="{c.get("min_gap", 2.5)}"',
+                # 비상 제동 한계와 반응 주기. 컨트롤러별 값이 없으면 공통값을 쓴다.
+                f'emergencyDecel="{c.get("emergency_decel", traffic.get("emergency_decel", 9.0))}"',
+                f'actionStepLength="{c.get("action_step_length", traffic.get("action_step_length", 0.0))}"',
                 # 컨트롤러별 희망속도 오버라이드 (없으면 공통 max_speed).
                 # 컨트롤러마다 속도를 다르게 주면 차선 간 속도차가 생겨
                 # "추월할 이유"가 자연스럽게 만들어진다.
@@ -139,7 +140,11 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
                           'lcSpeedGain="0"', 'lcKeepRight="0"']
                 if lc_model == "SL2015":
                     attrs.append('lcSublane="0"')
-            vtype_lines.append("        <vType " + " ".join(attrs) + "/>")
+            # minGap 단계마다 같은 컨트롤러의 vType을 하나씩 만들고 확률을 나눈다.
+            for vid, gap in zip(npc_vtype_ids(name, traffic), gaps or [c.get("min_gap", 2.5)]):
+                vtype_lines.append(
+                    f'        <vType id="{vid}" probability="{prob / len(gaps or [0]):.4f}" '
+                    f'minGap="{gap:.3f}" ' + " ".join(attrs) + "/>")
         vtypes_block = ('    <vTypeDistribution id="carDist">\n'
                         + "\n".join(vtype_lines)
                         + "\n    </vTypeDistribution>")
@@ -150,6 +155,8 @@ def build(road: dict, ego: dict, traffic: dict, out_dir: str) -> str:
                         f'laneChangeModel="{lc_model}" '
                         f'maxSpeed="{traffic["max_speed"]}" '
                         f'sigma="{traffic.get("sigma", 0.5)}" '
+                        f'emergencyDecel="{traffic.get("emergency_decel", 9.0)}" '
+                        f'actionStepLength="{traffic.get("action_step_length", 0.0)}" '
                         f'vClass="passenger" guiShape="passenger/sedan"/>')
         flow_type = "car"
 
@@ -311,6 +318,27 @@ def _norm_flare(flare, arm_length: float):
         l_max, r_max = max(l_max, l), max(r_max, r)
         out.append((d, l_max, r_max))
     return out
+
+
+def npc_min_gaps(traffic: dict) -> list[float]:
+    """배경 차량 minGap(m) 단계 목록을 반환한다.
+
+    ``traffic["min_gap_range"]``가 (하한, 상한)이면 그 사이를
+    ``traffic["min_gap_levels"]``개로 고르게 나눈 값이다. 없으면 빈 목록이며,
+    이때는 컨트롤러별 ``min_gap``을 쓴다.
+    """
+    rng = traffic.get("min_gap_range")
+    if not rng:
+        return []
+    lo, hi = float(rng[0]), float(rng[1])
+    n = max(int(traffic.get("min_gap_levels", 2)), 2)
+    return [lo + (hi - lo) * i / (n - 1) for i in range(n)]
+
+
+def npc_vtype_ids(name: str, traffic: dict) -> list[str]:
+    """컨트롤러 ``name``의 vType id 목록을 반환한다. minGap 단계마다 하나씩이다."""
+    gaps = npc_min_gaps(traffic)
+    return [f"car_{name}_g{i}" for i in range(len(gaps))] if gaps else [f"car_{name}"]
 
 
 def osm_config(road: dict):

@@ -97,6 +97,50 @@ def _select_ways(root, xy, cfg):
             root.remove(way)
 
 
+def _drop_signals(root, node_ids):
+    """지정한 노드의 신호·횡단보도 태그를 지운다 (netconvert가 그 자리에 신호를 만들지 않는다)."""
+    for node in root.findall("node"):
+        if node.get("id") in node_ids:
+            for tag in node.findall("tag"):
+                if tag.get("k") in ("highway", "crossing", "crossing:markings", "traffic_signals"):
+                    node.remove(tag)
+
+
+def _reroute_way_ends(root, spec):
+    """way 끝을 다른 노드로 옮긴다. {way id: (남길 마지막 노드, 새 끝 노드)}
+
+    남길 노드 뒤는 지우고 새 끝 노드로 곧게 잇는다 (합류 지점을 옮길 때 쓴다).
+    """
+    for way in root.findall("way"):
+        if way.get("id") in spec:
+            keep, end = spec[way.get("id")]
+            refs = _way_refs(way)
+            _set_refs(way, refs[:refs.index(keep) + 1] + [end])
+
+
+def _replace_two_way(root, xy, spec):
+    """양방향 way를 지우고, 거기서 이어지는 일방통행 way 쌍을 그 길이만큼 직선으로 늘린다.
+
+    spec: {양방향 way id: (정방향 way, 역방향 way)}. 정방향 way는 양방향 way 끝 노드에서
+    시작하고, 역방향 way는 그 노드에서 끝나야 한다. 양방향 way와 일방통행 way 쌍이 만나는
+    노드는 netconvert가 접속부로 남기고, 그 노드로 모이는 일방통행 way의 첫·끝 구간이
+    옆으로 꺾여 있다. 그 노드를 빼고 두 way의 바로 앞 구간 방향으로 늘린다.
+    """
+    ways = {w.get("id"): w for w in root.findall("way")}
+    for wid, (fwd, bwd) in spec.items():
+        refs = _way_refs(ways[wid])
+        f_refs, b_refs = _way_refs(ways[fwd]), _way_refs(ways[bwd])
+        assert f_refs[0] == refs[-1] and b_refs[-1] == refs[-1], \
+            f"way {wid}의 끝 노드에서 {fwd}, {bwd}가 이어지지 않습니다."
+        length = sum(math.dist(xy[a], xy[b]) for a, b in zip(refs, refs[1:]))
+        # 정방향: 둘째 노드에서 셋째 → 둘째 방향으로, 역방향: 끝에서 둘째 노드에서 그 앞 → 그 노드 방향으로
+        for way, anchor, ahead, keep in ((ways[fwd], f_refs[1], f_refs[2], f_refs[1:]),
+                                         (ways[bwd], b_refs[-2], b_refs[-3], b_refs[:-1])):
+            end = _new_node(root, xy, anchor, ahead, -length / math.dist(xy[anchor], xy[ahead]))
+            _set_refs(way, [end] + keep if way is ways[fwd] else keep + [end])
+        root.remove(ways[wid])
+
+
 def _prune_dangling_ramps(root):
     """다른 도로와 이어지지 않는 램프를 반복 제거한다.
 
@@ -214,7 +258,7 @@ def _trim_ends(root, xy, keep: float, protected):
 
 
 def _apply_road_attributes(root, xy, cfg) -> dict:
-    """OSM 태그 보정: 제한속도가 없는 도로의 기본값, 차로 수 상한, way별 차로 수, 포켓 차로.
+    """OSM 태그 보정: 제한속도가 없는 도로의 기본값, 차로 수 상한, way별 차로 수·진행 방향, 포켓 차로.
 
     ({포켓 way id: (차로가 생기는 쪽, 목적지)}, {나뉘어 새로 생긴 way id: 원래 way id})를 반환한다.
     """
@@ -228,11 +272,32 @@ def _apply_road_attributes(root, xy, cfg) -> dict:
         if cap and int(tags.get("lanes", 0)) > cap:
             _set_tag(way, "lanes", str(cap))
         lanes = cfg.get("way_lanes", {}).get(way.get("id"))
-        if lanes:
+        if isinstance(lanes, tuple):
+            _set_tag(way, "lanes", str(sum(lanes)))
+            _set_tag(way, "lanes:forward", str(lanes[0]))
+            _set_tag(way, "lanes:backward", str(lanes[1]))
+        elif lanes:
             _set_tag(way, "lanes", str(lanes))
+        # 차로별 진행 방향은 turn_lanes로 지정한 way만 쓴다 (OSM 원본 표기는 버린다)
+        for tag in way.findall("tag"):
+            if tag.get("k") == "turn:lanes":
+                way.remove(tag)
     origin = _apply_partial_lanes(root, cfg.get("way_lanes_until", {}))
     pockets = _apply_pockets(root, xy, cfg.get("pocket_lanes", {}), origin)
+    _apply_turn_lanes(root, cfg.get("turn_lanes", {}), origin)
     return pockets, origin
+
+
+def _apply_turn_lanes(root, spec, origin):
+    """way 끝 교차로의 차로별 진행 방향(turn:lanes)을 지정한다. {way id: turn:lanes 값}
+
+    way가 앞에서 여러 조각으로 나뉘었으면 마지막 조각에만 붙인다.
+    """
+    for wid, turns in spec.items():
+        pieces = [w for w in root.findall("way") if origin.get(w.get("id"), w.get("id")) == wid]
+        starts = {_way_refs(w)[0] for w in pieces}
+        last = next(w for w in pieces if _way_refs(w)[-1] not in starts)
+        _set_tag(last, "turn:lanes", turns)
 
 
 def _apply_partial_lanes(root, spec) -> dict:
@@ -393,6 +458,9 @@ def write_network(out_dir: str, cfg: dict) -> str:
           for n in root.findall("node")}
 
     _select_ways(root, xy, cfg)
+    _replace_two_way(root, xy, cfg.get("two_way_replace", {}))
+    _reroute_way_ends(root, cfg.get("reroute_way_end", {}))
+    _drop_signals(root, cfg.get("drop_signals", ()))
     _prune_dangling_ramps(root)
     _trim_ends(root, xy, float(cfg["end_keep"]),
                {w for pair in cfg["routes"].values() for w in pair})
@@ -412,6 +480,7 @@ def write_network(out_dir: str, cfg: dict) -> str:
             "--geometry.remove", "true",
             "--junctions.join", "true",       # OSM의 잘게 나뉜 교차로 노드를 합침
             "--no-turnarounds", "true",
+            "--osm.turn-lanes", "true",       # turn:lanes 태그대로 차로별 진행 방향을 정한다
             "--tls.guess-signals", "true",
             "--tls.join", "true",
             "--keep-edges.by-vclass", "passenger",
@@ -430,7 +499,51 @@ def write_network(out_dir: str, cfg: dict) -> str:
                            "--ramps.unset", ",".join(plain)],
                    check=True, capture_output=True)
     net_repair.repair(net_path, out_dir, pockets, drops)
+    _set_split_signals(net_path, out_dir, cfg.get("split_signal", {}))
     return net_path
+
+
+def _set_split_signals(net_path: str, out_dir: str, spec: dict):
+    """신호 교차로를 방향별 단독 신호로 바꾼다. {진입 way id: 녹색 시간(초)}
+
+    적은 순서대로 진입로마다 [녹색, 황색 YELLOW초, 전체 적색 ALL_RED초] 현시를 둔다.
+    진입로 앞 노드가 같은 신호에 묶여 있으면 그 연결은 이어지는 진입로와 같이 켠다.
+    """
+    if not spec:
+        return
+    YELLOW, ALL_RED = 4, 1
+    root = ET.parse(net_path).getroot()
+    base = lambda eid: eid.lstrip("-").partition("#")[0]
+    links = {}                                  # 신호 id → {연결 번호: 진입 way id}
+    conns = [c for c in root.findall("connection") if c.get("tl")]
+    for c in conns:
+        way = base(c.get("from"))
+        if way not in spec:
+            way = base(c.get("to"))             # 진입로 앞 노드의 연결
+        if way in spec:
+            links.setdefault(c.get("tl"), {})[int(c.get("linkIndex"))] = way
+    path = os.path.join(out_dir, "signal_patch.tll.xml")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("<tlLogics>\n")
+        for tl in root.findall("tlLogic"):
+            if tl.get("id") not in links:
+                continue
+            n = len(tl.find("phase").get("state"))
+            ways = links[tl.get("id")]
+            assert len(ways) == n, f"신호 {tl.get('id')}의 연결 중 진입 way를 모르는 것이 있습니다."
+            f.write(f'    <tlLogic id="{tl.get("id")}" type="static" '
+                    f'programID="{tl.get("programID")}" offset="{tl.get("offset")}">\n')
+            for way, green in spec.items():
+                on = {i for i, w in ways.items() if w == way}
+                if not on:
+                    continue
+                for duration, light in ((green, "G"), (YELLOW, "y"), (ALL_RED, "r")):
+                    state = "".join(light if i in on else "r" for i in range(n))
+                    f.write(f'        <phase duration="{duration}" state="{state}"/>\n')
+            f.write("    </tlLogic>\n")
+        f.write("</tlLogics>\n")
+    subprocess.run([checkBinary("netconvert"), "--sumo-net-file", net_path,
+                    "--tllogic-files", path, "-o", net_path], check=True, capture_output=True)
 
 
 def _on_ramp_edges(net_path: str) -> list:
@@ -445,10 +558,13 @@ def _on_ramp_edges(net_path: str) -> list:
 
 
 def _way_edges(net, way_id: str):
-    """way에서 만들어진 edge들을 진행 순서로 반환 (#0, #0-AddedOffRampEdge, #1 ...)."""
+    """way에서 만들어진 edge들을 진행 순서로 반환 (#0, #0-AddedOffRampEdge, #1-AddedOnRampEdge, #1 ...).
+
+    netconvert가 덧붙이는 감속 구간(OffRamp)은 원래 edge 뒤에, 가속 구간(OnRamp)은 앞에 온다.
+    """
     def order(e):
         num, _, added = e.getID().partition("#")[2].partition("-")
-        return (int(num) if num else 0, 1 if added else 0)
+        return (int(num) if num else 0, {"AddedOnRampEdge": -1, "AddedOffRampEdge": 1}.get(added, 0))
     edges = [e for e in net.getEdges()
              if e.getID().partition("#")[0] == way_id]
     if not edges:
@@ -457,13 +573,22 @@ def _way_edges(net, way_id: str):
 
 
 def resolve_routes(net_path: str, cfg: dict) -> dict:
-    """{경로 이름: [edge id...]}. way의 맨 앞 edge에서 맨 끝 edge까지 최단 경로."""
+    """{경로 이름: [edge id...]}. way의 맨 앞 edge에서 맨 끝 edge까지 최단 경로.
+
+    경로가 (출발, 경유, 도착) way 세 개면 경유 way의 맨 앞 edge를 지나는 최단 경로다.
+    """
     net = sumolib.net.readNet(net_path, withInternal=False)
     routes = {}
-    for name, (src, dst) in cfg["routes"].items():
-        path, _ = net.getShortestPath(_way_edges(net, src)[0], _way_edges(net, dst)[-1])
-        if not path:
-            raise ValueError(f"경로 {name}: way {src} → {dst} 로 이어지는 길이 없습니다.")
+    for name, ways in cfg["routes"].items():
+        stops = ([_way_edges(net, ways[0])[0]]
+                 + [_way_edges(net, w)[0] for w in ways[1:-1]]
+                 + [_way_edges(net, ways[-1])[-1]])
+        path = [stops[0]]
+        for a, b in zip(stops, stops[1:]):
+            leg, _ = net.getShortestPath(a, b)
+            if not leg:
+                raise ValueError(f"경로 {name}: way {' → '.join(ways)} 로 이어지는 길이 없습니다.")
+            path += leg[1:]
         routes[name] = [e.getID() for e in path]
     return routes
 
@@ -473,8 +598,10 @@ def demand_block(net_path: str, cfg: dict, flow_type: str, traffic: dict) -> str
     routes = resolve_routes(net_path, cfg)
     lines = [f'    <route id="{name}" edges="{" ".join(edges)}"/>'
              for name, edges in routes.items()]
+    depart_lane = cfg.get("flow_depart_lane", {})
     for name, vph in cfg["flows"].items():
         lines.append(f'    <flow id="flow_{name}" type="{flow_type}" route="{name}" '
                      f'begin="0" end="100000" period="exp({float(vph) / 3600.0:.5f})" '
-                     f'departLane="best" departSpeed="{traffic["depart_speed"]}"/>')
+                     f'departLane="{depart_lane.get(name, "best")}" '
+                     f'departSpeed="{traffic["depart_speed"]}"/>')
     return "\n".join(lines)

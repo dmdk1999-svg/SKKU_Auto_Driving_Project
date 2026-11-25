@@ -474,6 +474,39 @@ def _fix_junctions(net_path: str, pockets: dict, drops):
             d_br = gap(br.getID(), o.getID(), br_pairs, extra=extra)
             end_shift[br.getID()] = (-d_br[0], -d_br[1])
             pushes.append((br, main, side, (_width(main) + _width(br)) / 2, True))
+        elif (len(inc) >= 3 and len(out) == 1
+              and sum(e.getLaneNumber() for e in inc) == out[0].getLaneNumber()):   # 여러 갈래 합류
+            # 들어오는 도로를 오른쪽부터 늘어놓고 차로를 하나씩 잇는다 (노드 30m 앞 위치 기준)
+            o = out[0]
+            p0, right = frame(o.getID(), at_start=True)
+
+            def offset(e):
+                pts = _densify(shapes[e.getID()])[::-1]
+                s = _cumlen(pts)
+                p = next((q for q, d in zip(pts, s) if d >= 30.0), pts[-1])
+                return (p[0] - p0[0]) * right[0] + (p[1] - p0[1]) * right[1]
+
+            order = sorted(inc, key=offset, reverse=True)
+            main = max(inc, key=rank)
+            pairs, t = {}, 0
+            for e in order:
+                pairs[e] = {(j, t + j) for j in range(e.getLaneNumber())}
+                new[(e.getID(), o.getID())] = pairs[e]
+                t += e.getLaneNumber()
+            # 본선에 맞춰 나가는 edge 시작점을 옮기고, 나머지 도로는 끝점을 그 차로 위치로 옮긴다
+            d_out = gap(main.getID(), o.getID(), pairs[main])
+            start_shift[o.getID()] = d_out
+            k = order.index(main)
+            for i, e in enumerate(order):
+                if e is main:
+                    continue
+                d = gap(e.getID(), o.getID(), pairs[e], extra=d_out)
+                end_shift[e.getID()] = (-d[0], -d[1])
+            # 본선 바깥쪽으로 한 도로씩: 본선에 가까운 이웃 도로 폭 밖으로 민다
+            for i in list(range(k - 1, -1, -1)) + list(range(k + 1, len(order))):
+                e, ref = order[i], order[i + 1 if i < k else i - 1]
+                side = 1 if i < k else -1
+                pushes.append((e, ref, side, (_width(ref) + _width(e)) / 2, True))
         elif len(inc) == 1 and len(out) == 2 and not pockets.get(base(inc[0]), (None, None))[1]:   # 분기
             i_e = inc[0]
             main, br = sorted(out, key=rank, reverse=True)
