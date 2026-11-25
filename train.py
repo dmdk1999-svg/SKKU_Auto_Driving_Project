@@ -52,6 +52,7 @@ REWARD_OVERRIDES = dict(
     exit_miss_penalty=4.0,     # 출구 놓침(경로로 이어지지 않는 차선 끝 도달) 시 감점 후 종료
     queue_cut_penalty=0.5,     # 합류 완료 시 밀려난 대기 줄 차량 1대당 감점
     overlap_penalty=0.05,      # 차선 경계에 걸친 폭에 비례한 스텝당 감점
+    overlap_grace=3.0,         #   처음 걸친 뒤 이 시간(s) 동안은 겹침 감점 없음
     junction_overlap_penalty=0.5,  # 차선에 걸친 채 교차로 진입 시 1회 감점
     blocked_penalty=0.05,      # 더 빠른 인접 차선을 두고 머무는 기회비용 감점 (스텝당 최대)
     invalid_action_penalty=0.0,# 차선이 없는 방향 차선변경 트리거 감점
@@ -170,6 +171,7 @@ if __name__ == "__main__":
         action=ACTION, reward=REWARD,
         traffic=TRAFFIC,
         gui=False,   # 학습은 화면 없이 (수십 배 빠름)
+        training=True,   # 배경차 비상제동 커리큘럼 사용 (road_config TRAFFIC 참고)
     )
 
     # 4) 경험 버퍼 + 에이전트
