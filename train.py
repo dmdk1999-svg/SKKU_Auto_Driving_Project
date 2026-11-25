@@ -42,16 +42,19 @@ TOTAL_TIMESTEPS = 200_000   # 총 학습 스텝 수
 #  이 파일이 run 폴더에 스냅샷되므로 "그 결과가 어떤 계수였는지"도 남는다.
 # ══════════════════════════════════════════════════════════════════
 REWARD_OVERRIDES = dict(
-    speed_weight=0.1,          # 속도 보상 (스텝당 최대 이 값)
+    speed_weight=0.1,          # 진행 거리 보상 (스텝당 최대 이 값)
     collision_penalty=5.0,     # 충돌 시 -이 값, 즉시 종료
     red_light_penalty=5.0,     # 적색 신호 통과 시 -이 값, 즉시 종료
     arrival_bonus=2.0,         # 완주 보너스
     safe_gap_penalty=0.1,      # UN R157 최소 차간거리 위반 시 스텝당 최대 감점
+    slow_penalty=0.1,          # 앞 공간이 d_min보다 넓은데 느리면 스텝당 최대 감점
+    slow_tolerance=0.2,        #   기준 속도(앞차 속도, 제한속도)보다 20%까지 느린 건 허용
+    exit_miss_penalty=4.0,     # 출구 놓침(경로로 이어지지 않는 차선 끝 도달) 시 감점 후 종료
+    queue_cut_penalty=0.5,     # 합류 완료 시 밀려난 대기 줄 차량 1대당 감점
     overlap_penalty=0.05,      # 차선 경계에 걸친 폭에 비례한 스텝당 감점
-    blocked_penalty=0.05,      # "느린 앞차에 막힘" 스텝당 감점 (추월 학습 핵심)
-    blocked_gap=20.0,          #   막힘 판정: 앞차 이 거리 이내
-    blocked_speed_frac=0.7,    #   그리고 내 속도 < vmax × 이 값
-    invalid_action_penalty=0.0,# 도로 경계 밖 방향 횡가속 명령 감점
+    junction_overlap_penalty=0.5,  # 차선에 걸친 채 교차로 진입 시 1회 감점
+    blocked_penalty=0.05,      # 더 빠른 인접 차선을 두고 머무는 기회비용 감점 (스텝당 최대)
+    invalid_action_penalty=0.0,# 차선이 없는 방향 차선변경 트리거 감점
 )
 REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}
 
@@ -88,23 +91,20 @@ HPARAMS = dict(
     # ---- 네트워크 (utils/networks.py) ----
     hidden_sizes=(256, 256),
     activation="relu",       # "tanh" | "relu" | "elu"
-    policy_type="gaussian",    # "gaussian": 종·횡 가감속 모두 연속(Normal).
-                               #   횡방향 행동이 횡가속도라 이 정책을 쓴다.
-                               # "hybrid": 차선 이산(Categorical) 행동 전용.
-                               #   현재 환경의 횡가속도 행동과는 맞지 않는다.
+    policy_type="hybrid",      # "hybrid": 가감속·기동 횡가속도는 연속(Normal),
+                               #   차선변경 트리거는 3-way 이산(Categorical).
+                               #   평가(argmax)에서도 학습한 차선변경이 그대로 나온다.
                                #   (아래 lane_keep_bias, lane_entropy_coef는 hybrid 전용)
+                               # "gaussian": 3차원 모두 연속(Normal). 트리거는 환경이
+                               #   ±0.5로 양자화하므로 평가(μ)에서 변경이 잘 나오지 않는다.
     lane_keep_bias=0.5,        # hybrid 차선 head의 "유지" 초기 편향.
                                #   0.5 → 초기 (좌27%/유지45%/우27%) ≈ 55% 변경 시도 (공격적)
                                #   1.0 → ≈32% 시도 (보수적)
                                #   낮추면 탐험↑, 높이면 보수적
-    init_log_std=-0.5,         # 가감속 축 초기 탐험 폭 σ=e^-0.5≈0.61
-                               # (hybrid에서 차선 탐험은 위 bias가 담당)  # 차원별 초기 탐험 폭: (가감속, 차선변경)
-                               #   가감속 σ = e^-0.5 ≈ 0.61
-                               #   차선변경 σ = e^0   = 1.0  ← 크게!
-                               # 차선변경은 |raw|>0.5를 넘어야 실행되므로
-                               # σ가 커야 초반에 변경을 자주 시도하고,
-                               # (안전게이트 덕에 죽지 않고) 추월의 이득을
-                               # 경험해 μ_lane이 임계 위로 학습될 수 있다.
+    init_log_std=-0.5,         # 연속 축 초기 탐험 폭 σ=e^-0.5≈0.61
+                               #   hybrid: 스칼라면 가감속·횡가속도 공통,
+                               #   (가감속, 횡가속도) 튜플이면 축별로 지정.
+                               #   차선 트리거 탐험은 위 lane_keep_bias가 담당한다.
 
     # ---- 기타 ----
     seed=0,

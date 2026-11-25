@@ -121,6 +121,7 @@ if __name__ == "__main__":
     print(f"\n─── 주행 지표 ({args.episodes} 에피소드 평균) ───")
     print(f"  충돌률       : {metrics.collision_rate:.0%}")
     print(f"  완주율       : {metrics.success_rate:.0%}")
+    print(f"  출구놓침률   : {metrics.exit_miss_rate:.0%}")
     print(f"  시간초과율   : {metrics.timeout_rate:.0%}")
     print(f"  평균 속도    : {metrics.mean_speed:.2f} m/s "
           f"({metrics.mean_speed * 3.6:.1f} km/h)")

@@ -103,11 +103,11 @@ class PPO:
         self.device = torch.device(device)
 
         # 네트워크는 utils/networks.py 에서 가져온다.
-        # hybrid: 가감속(Normal) + 차선변경(Categorical 3-way).
+        # hybrid: 가감속·횡가속도(Normal) + 차선변경 트리거(Categorical 3-way).
         #   양자화 dead zone이 없어 deterministic 평가에서도 변경이 나온다.
         # gaussian: 모든 축 연속 — 비교 실험용으로 남겨둠.
         if policy_type == "hybrid":
-            assert act_dim == 2, "hybrid 정책은 [가감속, 차선] 2차원 행동 전용"
+            assert act_dim == 3, "hybrid 정책은 [가감속, 차선 트리거, 횡가속도] 3차원 행동 전용"
             self.policy = HybridActorCritic(
                 obs_dim,
                 hidden_sizes=hidden_sizes,

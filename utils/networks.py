@@ -184,13 +184,12 @@ class CategoricalActorCritic(nn.Module):
 #   - deterministic 평가 = argmax → 학습된 만큼 변경이 "실제로 나온다"
 #   - 탐험 = 확률 그 자체 (keep_bias로 초기 시도율을 직관적으로 제어)
 #
-# 행동 벡터 인터페이스는 기존과 동일하게 유지한다:
-#   action = [가감속 실수, 차선명령 실수(-1/0/+1)]
-#   → env의 양자화(_quantize_lane_change)가 ±1을 그대로 통과시키므로
-#     환경 코드는 수정 없이 동작한다.
+# 행동 벡터는 env/mdp_config.py의 ACTION 순서를 따른다:
+#   action = [가감속 실수, 차선변경 트리거(-1/0/+1), 기동 횡가속도 실수]
+#   → env의 양자화(_quantize_lane_change)가 ±1을 그대로 통과시킨다.
 #
-# log π(a|s) = Normal.log_prob(가감속) + Categorical.log_prob(차선)
-#   (두 행동을 조건부 독립으로 두는 표준 구성)
+# log π(a|s) = Normal.log_prob(가감속, 횡가속도) + Categorical.log_prob(트리거)
+#   (세 행동을 조건부 독립으로 두는 표준 구성)
 # ======================================================================
 class HybridActorCritic(nn.Module):
     # 차선 인덱스 ↔ 명령 매핑: 0=왼쪽(+1), 1=유지(0), 2=오른쪽(-1)
@@ -201,8 +200,9 @@ class HybridActorCritic(nn.Module):
                  lane_keep_bias: float = 1.0):
         """
         Args:
-            init_log_std: "가감속" 축의 초기 탐험 폭 σ = exp(·).
-                (시퀀스가 오면 첫 원소를 사용 — Gaussian 정책과의 호환용)
+            init_log_std: 연속 축의 초기 탐험 폭 σ = exp(·).
+                스칼라면 가감속과 횡가속도에 같이 쓰고,
+                길이 2 시퀀스면 (가감속, 횡가속도) 순서로 쓴다.
             lane_keep_bias: 차선 head의 "유지" 로짓 초기 편향.
                 1.0 → 초기 확률 약 (좌 16%, 유지 68%, 우 16%)
                     = 스텝당 ~32%가 변경 시도 (탐험 충분 + 과폭주 방지)
@@ -211,57 +211,62 @@ class HybridActorCritic(nn.Module):
         super().__init__()
         self.trunk = build_mlp(obs_dim, hidden_sizes, None, activation)
         last = hidden_sizes[-1]
-        self.mu_head = orthogonal_init(nn.Linear(last, 1), gain=0.01)
+        # 연속 head 출력은 [가감속, 횡가속도] 순서다.
+        self.mu_head = orthogonal_init(nn.Linear(last, 2), gain=0.01)
         self.lane_head = orthogonal_init(nn.Linear(last, 3), gain=0.01)
         self.v_head = orthogonal_init(nn.Linear(last, 1), gain=1.0)
         with torch.no_grad():
             self.lane_head.bias[1] = lane_keep_bias   # "유지"를 기본값으로
 
-        if not np.isscalar(init_log_std):
-            init_log_std = float(init_log_std[0])
-        self.log_std = nn.Parameter(torch.ones(1) * float(init_log_std))
+        if np.isscalar(init_log_std):
+            init = torch.ones(2) * float(init_log_std)
+        else:
+            assert len(init_log_std) == 2, \
+                f"hybrid init_log_std 길이 {len(init_log_std)} != 2 (가감속, 횡가속도)"
+            init = torch.as_tensor([float(x) for x in init_log_std])
+        self.log_std = nn.Parameter(init)
+        self.register_buffer("lane_cmds", torch.as_tensor(self.LANE_CMDS))
 
     def forward(self, obs):
         z = self.trunk(obs)
-        mu = torch.tanh(self.mu_head(z))          # 가감속 평균 ∈ [-1,1]
+        mu = torch.tanh(self.mu_head(z))          # [가감속, 횡가속도] 평균 ∈ [-1,1]
         std = torch.exp(self.log_std)
         lane_logits = self.lane_head(z)
         return mu, std, lane_logits, self.v_head(z).squeeze(-1)
 
+    def _compose(self, cont, lane_idx):
+        """연속 [가감속, 횡가속도]와 차선 인덱스를 3차원 행동 벡터로 합친다."""
+        lane_cmd = self.lane_cmds[lane_idx].unsqueeze(-1)
+        return torch.cat([cont[..., :1], lane_cmd, cont[..., 1:]], dim=-1)
+
     # ---- 알고리즘이 쓰는 표준 인터페이스 ----------------------------
     def sample(self, obs):
-        """행동 샘플. Returns (action[2], log_prob, value) — 배치 없는 단일 관측용."""
+        """행동 샘플. Returns (action[3], log_prob, value)."""
         mu, std, logits, value = self.forward(obs)
         nd = Normal(mu, std)
-        accel = nd.sample()
-        lane_idx = Categorical(logits=logits).sample()
-        log_prob = (nd.log_prob(accel).sum(-1)
-                    + Categorical(logits=logits).log_prob(lane_idx))
-        lane_cmd = torch.as_tensor(
-            [self.LANE_CMDS[int(i)] for i in lane_idx], device=accel.device)
-        action = torch.cat([accel, lane_cmd.unsqueeze(-1)], dim=-1)
-        return action, log_prob, value
+        cd = Categorical(logits=logits)
+        cont = nd.sample()
+        lane_idx = cd.sample()
+        log_prob = nd.log_prob(cont).sum(-1) + cd.log_prob(lane_idx)
+        return self._compose(cont, lane_idx), log_prob, value
 
     def det_action(self, obs):
-        """결정적 행동: 가감속=μ, 차선=argmax. 학습됐다면 여기서 변경이 나온다."""
+        """결정적 행동: 연속 축=μ, 차선=argmax. 학습됐다면 여기서 변경이 나온다."""
         mu, _, logits, _ = self.forward(obs)
-        lane_idx = torch.argmax(logits, dim=-1)
-        lane_cmd = torch.as_tensor(
-            [self.LANE_CMDS[int(i)] for i in lane_idx], device=mu.device)
-        return torch.cat([mu, lane_cmd.unsqueeze(-1)], dim=-1)
+        return self._compose(mu, torch.argmax(logits, dim=-1))
 
     def evaluate_actions(self, obs, actions):
         """저장된 행동의 (log_prob, entropy, value). PPO 업데이트용.
 
-        actions[:,0]=가감속, actions[:,1]=차선명령(-1/0/+1) → 인덱스 복원.
+        actions[:,0]=가감속, actions[:,1]=차선명령(-1/0/+1), actions[:,2]=횡가속도.
         """
         mu, std, logits, value = self.forward(obs)
         nd = Normal(mu, std)
         cd = Categorical(logits=logits)
-        accel = actions[:, :1]
+        cont = torch.cat([actions[:, :1], actions[:, 2:3]], dim=-1)
         # 명령(-1/0/+1) → 인덱스(2/1/0):  idx = 1 - round(cmd)
         lane_idx = (1.0 - torch.round(actions[:, 1])).long().clamp(0, 2)
-        log_prob = nd.log_prob(accel).sum(-1) + cd.log_prob(lane_idx)
+        log_prob = nd.log_prob(cont).sum(-1) + cd.log_prob(lane_idx)
         entropy = nd.entropy().sum(-1) + cd.entropy()
         return log_prob, entropy, value
 

@@ -3,9 +3,12 @@
 저장 단위는 POMDP transition 하나다:
     (o_t, a_t, r_t, o_{t+1}, terminated, truncated, s_t, s_{t+1})
 
-- o_t / o_{t+1}: agent가 실제로 보는 부분관측 (19차원)
-- a_t: [가감속 raw, 차선변경 raw]
-- lane_change: 실제 환경에 적용된 {-1, 0, +1}
+- o_t / o_{t+1}: agent가 실제로 보는 부분관측 (45차원)
+- a_t: [가감속 raw, 차선변경 트리거 raw, 기동 횡가속도 raw]
+  환경이 그 스텝에 쓰지 않은 성분은 0으로 저장한다. 트리거는 기동 중에,
+  횡가속도는 기동이 없거나 아직 차선 경계에 걸치기 전에 쓰이지 않는다.
+  정책이 낸 그대로의 값은 JSONL의 "action"에 남는다.
+- lane_change: 목표 차선에서 끝난 차선변경 기동의 방향 {-1, 0, +1}
 - s_t / s_{t+1}: SUMO 내부의 privileged simulator state.
   정책 입력에는 쓰지 않고 데이터 검증/representation/belief 학습용으로만 저장한다.
 
@@ -74,7 +77,7 @@ def detect_algorithm(model_path: str) -> str:
 
 
 def make_policy(args, env, worker_seed: int):
-    """args.policy에 맞는 obs -> action_raw(np.float32, shape (2,)) 함수를 만든다.
+    """args.policy에 맞는 obs -> action_raw(np.float32, shape (3,)) 함수를 만든다.
 
     ppo / bc 출력은 [-1, 1]로 클리핑해 저장한다. 환경의 입력 범위이기도 하고,
     train_bc.py가 |action_raw| <= 1을 검증하므로 이 데이터로 바로 BC를 돌릴 수 있다.
@@ -104,16 +107,32 @@ def make_policy(args, env, worker_seed: int):
 
     if args.policy == "keep-lane":
         # 완만한 가속 + 차선 유지. GUI/파이프라인 점검용.
-        return lambda obs: np.asarray([0.25, 0.0], dtype=np.float32)
+        return lambda obs: np.asarray([0.25, 0.0, 0.0], dtype=np.float32)
 
-    # random: 가감속은 연속 uniform[-1,1], 차선변경은 {-1,0,+1} 직접 샘플링 (유지를 더 자주)
+    # random: 가감속과 기동 횡가속도는 연속 uniform[-1,1],
+    # 차선변경 트리거는 {-1,0,+1} 직접 샘플링 (유지를 더 자주)
     rng = np.random.default_rng(worker_seed)
 
     def act(obs):
         accel = rng.uniform(-1.0, 1.0)
         lane = rng.choice(np.asarray([-1.0, 0.0, 1.0]), p=[0.15, 0.70, 0.15])
-        return np.asarray([accel, lane], dtype=np.float32)
+        lat = rng.uniform(-1.0, 1.0)
+        return np.asarray([accel, lane, lat], dtype=np.float32)
     return act
+
+
+def effective_action(action: np.ndarray, info: dict) -> np.ndarray:
+    """환경이 이번 스텝에 쓰지 않은 행동 성분을 0으로 바꾼 사본을 반환한다.
+
+    차선변경 트리거는 ``info["lane_change_used"]``, 기동 횡가속도는
+    ``info["lat_accel_used"]``가 False인 스텝에 0이 된다.
+    """
+    out = np.asarray(action, dtype=np.float32).copy()
+    if not info["lane_change_used"]:
+        out[ACTION["lane_change_index"]] = 0.0
+    if not info["lat_accel_used"]:
+        out[ACTION["lat_accel_index"]] = 0.0
+    return out
 
 
 def compact(obj, ndigits: int):
@@ -219,16 +238,21 @@ def collect(args, sumocfg, episodes, worker_id, jsonl_path, npz_path, tag=""):
                     next_obs, reward, terminated, truncated, info = env.step(action)
                     state_tp1 = env.get_privileged_state()
                     done = terminated or truncated
+                    action_eff = effective_action(action, info)
 
                     record = {
                         "episode": int(ep),
                         "t": t,
                         "observation": compact(obs, args.ndigits),
                         # 스칼라 몇 개는 용량에 영향이 없으니 반올림하지 않는다.
-                        "action_raw": np.asarray(action, dtype=float).tolist(),
+                        "action_raw": action_eff.astype(float).tolist(),
                         "action": {
                             "accel_raw": float(info["accel_raw"]),
                             "lane_change_raw": float(info["lane_change_raw"]),
+                            "lat_accel_raw": float(info["lat_accel_raw"]),
+                            "lane_change_used": bool(info["lane_change_used"]),
+                            "lat_accel_used": bool(info["lat_accel_used"]),
+                            "lane_change_started": bool(info["lane_change_started"]),
                             "lane_change": int(info["lane_change"]),
                             "lane_change_applied": bool(info["lane_change_applied"]),
                         },
@@ -243,6 +267,7 @@ def collect(args, sumocfg, episodes, worker_id, jsonl_path, npz_path, tag=""):
                             "arrived": bool(info["arrived"]),
                             "lane_before": info["lane_before"],
                             "lane_after": info["lane_after"],
+                            "junction_straddle": bool(info["junction_straddle"]),
                         },
                     }
                     if done:
@@ -255,7 +280,7 @@ def collect(args, sumocfg, episodes, worker_id, jsonl_path, npz_path, tag=""):
 
                     obs_buf.append(np.asarray(obs, dtype=np.float32))
                     next_obs_buf.append(np.asarray(next_obs, dtype=np.float32))
-                    action_raw_buf.append(np.asarray(action, dtype=np.float32))
+                    action_raw_buf.append(action_eff)
                     lane_cmd_buf.append(int(info["lane_change"]))
                     reward_buf.append(float(reward))
                     term_buf.append(bool(terminated))

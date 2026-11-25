@@ -9,3 +9,18 @@ results/
 
 # SUMO 도로망 (실행할 때마다 env/road_config.py와 env/osm/ 원본으로 다시 생성)
 env/sumo/
+
+# CLI
+.bashrc
+.bash_profile
+.zshrc
+.zprofile
+.profile
+
+# IDE
+.idea
+.vscode
+
+# AI
+.claude/
+.mcp.json
