@@ -114,6 +114,7 @@ class SumoHighwayEnv(gym.Env):
         if str(_dl).lower() == "random":
             # 출발 구간의 차선 중 하나를 무작위로 고른다. 경로와 무관하게 고르므로
             # 진출 차선까지 여러 번 차선을 바꿔야 하는 출발도 생긴다.
+            # 경로별로 남은 거리 안에 차선을 다 바꿀 수 없는 차선은 첫 투입 뒤 제외한다.
             self.ego_depart_lane = "random"
         elif osm:
             # 경로마다 차선 수가 달라서, 경로를 따라 차선 변경이 가장 적게 필요한
@@ -153,6 +154,8 @@ class SumoHighwayEnv(gym.Env):
         else:
             self._prefill_types, self._prefill_probs = ["car"], np.array([1.0])
         self.ego_depart_speed = str(ego["depart_speed"])
+        self.depart_lane_spacing = float(ego.get("depart_lane_spacing", 0.0))
+        self.depart_lanes: dict[str, list[int]] = {}
         # 행동 a ∈ [-1,1] 을 실제 가속도로 변환할 때 쓰는 스케일:
         #   a = +1 → +max_accel (풀 액셀),  a = -1 → -max_decel (풀 브레이크)
         self.max_accel = float(ego["accel"])   # m/s^2
@@ -198,6 +201,7 @@ class SumoHighwayEnv(gym.Env):
         self.signal_horizon = float(mdp_obs.get("signal_horizon", 100.0))
         self.junction_horizon = float(mdp_obs.get("junction_horizon", 100.0))
         self.straddle_horizon = float(mdp_obs.get("straddle_horizon", 10.0))
+        self.lane_offset_scale = float(mdp_obs.get("lane_offset_scale", 6.0))
         self.act_dim = int(action["dim"])
         self.accel_index = int(action.get("accel_index", 0))
         self.lane_change_index = int(action.get("lane_change_index", 1))
@@ -212,6 +216,7 @@ class SumoHighwayEnv(gym.Env):
 
         self.ego_id = "ego"        # SUMO 안에서 ego 차량을 식별하는 ID
         self.step_count = 0
+        self._nav_phi = 0.0
         self._started = False      # SUMO 프로세스가 떠 있는지 여부
 
         # Gymnasium 행동 공간:
@@ -369,8 +374,14 @@ class SumoHighwayEnv(gym.Env):
                 self.route_timeout[route] / self.step_length))
         else:
             self.episode_max_steps = self.max_steps
+        depart_lane = self.ego_depart_lane
+        if depart_lane == "random":
+            first_edge = traci.route.getEdges(route)[0]
+            lanes = self.depart_lanes.get(
+                route, list(range(traci.edge.getLaneNumber(first_edge))))
+            depart_lane = str(np.random.choice(lanes))
         traci.vehicle.add(self.ego_id, route, typeID="ego_type",
-                          departLane=self.ego_depart_lane,
+                          departLane=depart_lane,
                           departPos="0",
                           departSpeed=self.ego_depart_speed)
 
@@ -401,6 +412,8 @@ class SumoHighwayEnv(gym.Env):
             raise RuntimeError(
                 "ego 삽입 실패: 도로 입구가 30스텝 이상 막혀 있습니다. "
                 "TRAFFIC['vehs_per_hour']를 낮추거나 depart_speed를 확인하세요.")
+        if self.ego_depart_lane == "random" and route not in self.depart_lanes:
+            self.depart_lanes[route] = self._feasible_depart_lanes()
 
         # GUI 기본 시점: ego를 화면 중앙에서 추적하고 충분히 가까이 확대한다.
         # 긴 직선도로 전체를 한 화면에 맞추는 기본 뷰는 차량이 점/삼각형처럼
@@ -422,6 +435,8 @@ class SumoHighwayEnv(gym.Env):
         self.lat_speed = 0.0
         self.lc_block_until = 0
         self._reset_maneuver()
+        self._nav_phi = (0.0 if traci.vehicle.getRoadID(self.ego_id).startswith(":")
+                         else self._nav_potential())
         return self._get_obs(), {}
 
     def _reset_maneuver(self) -> None:
@@ -635,7 +650,7 @@ class SumoHighwayEnv(gym.Env):
         #   getBestLanes의 length는 차선 시작점 기준이라 내 위치를 뺀다.
         #   교차로 내부 등 현재 차선이 목록에 없으면 "변경 불필요, 멀리 남음".
         best_offset, remain = self._best_lane_info()
-        obs += [best_offset / 2.0, max(remain, 0.0) / self.route_horizon]
+        obs += [best_offset / self.lane_offset_scale, max(remain, 0.0) / self.route_horizon]
 
         # [41, 42] 다음 신호: 상태(적 -1, 황 0.5, 녹 1, 없음 0), 정지선까지 거리
         #   signal_horizon 밖의 신호는 보이지 않는 것으로 보고 "신호 없음"으로 둔다.
@@ -667,6 +682,22 @@ class SumoHighwayEnv(gym.Env):
                         lane[1] - traci.vehicle.getLanePosition(self.ego_id))
         return 0.0, self.route_horizon
 
+    def _feasible_depart_lanes(self) -> list[int]:
+        """현재 edge에서 남은 거리 안에 필요한 차선 변경을 마칠 수 있는 차선 번호를 반환한다.
+
+        차선 변경 1회에 ``EGO["depart_lane_spacing"]`` m가 든다고 보고,
+        |필요한 차선 변경 수| × spacing이 그 차선의 잔여 거리 이하인 차선만 남긴다.
+        조건을 만족하는 차선이 없으면 변경이 필요 없는 차선을 반환한다.
+        """
+        edge = traci.vehicle.getRoadID(self.ego_id)
+        pos = traci.vehicle.getLanePosition(self.ego_id)
+        lanes = [(int(lane[0].rsplit("_", 1)[1]), abs(lane[3]), lane[1] - pos)
+                 for lane in traci.vehicle.getBestLanes(self.ego_id)
+                 if lane[0].rsplit("_", 1)[0] == edge]
+        feasible = [index for index, offset, remain in lanes
+                    if offset * self.depart_lane_spacing <= remain]
+        return feasible or [index for index, offset, _ in lanes if offset == 0]
+
     def _exit_missed(self) -> bool:
         """경로로 이어지지 않는 차선의 끝에 도달했는지 반환한다.
 
@@ -676,6 +707,20 @@ class SumoHighwayEnv(gym.Env):
         offset, remain = self._best_lane_info()
         return offset != 0.0 and remain <= float(self.rw.get("exit_miss_distance", 5.0))
 
+    def _nav_potential(self) -> float:
+        """현재 차선의 경로 정합 포텐셜 Φ(s) ≤ 0을 반환한다.
+
+        Φ(s) = -nav_shaping_weight × |best_offset| × clip(1 - remain / nav_shaping_horizon, 0, 1).
+        출구가 horizon보다 멀면 0이고, 가까워질수록 비최적 차선의 포텐셜이 낮아진다.
+        """
+        weight = float(self.rw.get("nav_shaping_weight", 0.0))
+        horizon = float(self.rw.get("nav_shaping_horizon", 0.0))
+        if weight <= 0.0 or horizon <= 0.0:
+            return 0.0
+        offset, remain = self._best_lane_info()
+        urgency = float(np.clip(1.0 - remain / horizon, 0.0, 1.0))
+        return -weight * abs(offset) * urgency
+
     def _queue_cut_count(self) -> int:
         """ego 바로 뒤에 이어진 대기 줄의 차량 수를 반환한다.
 
@@ -683,7 +728,7 @@ class SumoHighwayEnv(gym.Env):
         ``queue_gap`` 이하인 차량을 센다. 조건을 벗어나는 차량에서 멈춘다.
         """
         max_speed = float(self.rw.get("queue_speed", 5.0))
-        max_gap = float(self.rw.get("queue_gap", 10.0))
+        max_gap = float(self.rw.get("queue_gap", 2.5))
         count, current = 0, self.ego_id
         while True:
             vid, gap = traci.vehicle.getFollower(current, max_gap)
@@ -725,8 +770,11 @@ class SumoHighwayEnv(gym.Env):
         """앞 공간이 안전거리보다 넓은데 기준 속도보다 느리면 감점 크기를 반환한다.
 
         앞 장애물은 시야 안의 같은 차로 앞차와 적색·황색 신호 정지선 중 가까운 쪽이다.
-        정지선은 속도 0인 앞차로 본다. 기준 속도는 장애물이 있으면
-        min(``speed_ref``, 장애물 속도), 없으면 ``speed_ref``다. ``leader``는
+        정지선은 속도 0인 앞차로 본다. 기준 속도는 장애물이 있으면 이 간격에서 낼 수 있는
+        속도 min(``speed_ref``, sqrt(v_obs² + 2·b·max(간격 − d_min(v_obs), 0)))이고,
+        없으면 ``speed_ref``다. b는 ``slow_comfort_decel``이다. 간격이 d_min이면 장애물
+        속도와 같고, 간격이 넓을수록 기준 속도가 올라가 정지한 장애물 뒤에 멀리 서 있어도
+        감점된다. ``leader``는
         :meth:`_neighbor`가 반환한 (minGap을 뺀 간격, 속도) 또는 None이다.
 
         기준 속도보다 ``slow_tolerance`` 비율까지 느린 것은 허용하고, 그보다 느린 만큼
@@ -744,7 +792,13 @@ class SumoHighwayEnv(gym.Env):
                 and (obstacle is None or light[2] < obstacle[0])):
             obstacle = (light[2], 0.0)
 
-        v_ref = speed_ref if obstacle is None else min(speed_ref, obstacle[1])
+        if obstacle is None:
+            v_ref = speed_ref
+        else:
+            gap, v_obs = obstacle
+            decel = float(self.rw.get("slow_comfort_decel", 2.0))
+            slack = max(gap - self._r157_min_gap(v_obs), 0.0)
+            v_ref = min(speed_ref, float(np.sqrt(v_obs ** 2 + 2.0 * decel * slack)))
         if v_ref <= 0.0:
             return 0.0
         if obstacle is not None and obstacle[0] <= self._r157_min_gap(ego_speed):
@@ -1130,6 +1184,7 @@ class SumoHighwayEnv(gym.Env):
         obs = self._get_obs()
         terminated, truncated = False, False
         ego_speed, ego_gap = None, None
+        nav_shaping = 0.0
 
         # ----- (4) 기존 보상 유지 -----
         if collided:
@@ -1163,13 +1218,14 @@ class SumoHighwayEnv(gym.Env):
                 moved / (speed_ref * self.step_length), 1.0)
             # ---- 안전거리 벌점 (UN R157 속도별 최소 차간거리) ----
             # getLeader의 gap은 내 minGap을 뺀 값이라 다시 더해 실제 간격으로 쓴다.
-            # 위반 정도(1 - 간격/d_min)에 비례해 감점한다.
+            # 위반 정도(1 - 간격/d_min)의 제곱에 비례해 감점한다. d_min 근처의 작은 위반은 약하게,
+            # 크게 붙을수록 강하게 감점한다.
             if ego_gap is not None:
                 gap = ego_gap + traci.vehicle.getMinGap(self.ego_id)
                 d_min = self._r157_min_gap(ego_speed)
                 if gap < d_min:
                     reward -= (float(self.rw.get("safe_gap_penalty", 0.0))
-                               * (1.0 - max(gap, 0.0) / d_min))
+                               * (1.0 - max(gap, 0.0) / d_min) ** 2)
 
             reward -= self._slow_penalty(ego_speed, same_lane_leader, speed_ref)
 
@@ -1198,8 +1254,20 @@ class SumoHighwayEnv(gym.Env):
             if not lateral_valid:
                 reward -= float(self.rw.get("invalid_action_penalty", 0.0))
 
-            # ---- 대기 줄 앞지르기: 합류 완료 시 밀려난 대기 줄 차량 수에 비례 ----
-            reward -= float(self.rw.get("queue_cut_penalty", 0.0)) * queue_cut
+            # ---- 대기 줄 앞지르기: 합류 완료 시 밀려난 대기 줄 차량 수에 비례 (상한 적용) ----
+            queue_cut_cost = float(self.rw.get("queue_cut_penalty", 0.0)) * queue_cut
+            queue_cut_cap = float(self.rw.get("queue_cut_max_penalty", 0.0))
+            if queue_cut_cap > 0.0:
+                queue_cut_cost = min(queue_cut_cost, queue_cut_cap)
+            reward -= queue_cut_cost
+
+            # ---- 내비게이션 포텐셜 셰이핑: 출구 접근 시 최적 차선 이동에 즉각 보상 ----
+            # 교차로 내부는 _best_lane_info가 중립값(0, route_horizon)을 반환하므로 직전 Φ 유지.
+            if not traci.vehicle.getRoadID(self.ego_id).startswith(":"):
+                new_phi = self._nav_potential()
+                nav_shaping = new_phi - self._nav_phi
+                self._nav_phi = new_phi
+                reward += nav_shaping
 
         if self.step_count >= self.episode_max_steps:
             truncated = True
@@ -1224,6 +1292,7 @@ class SumoHighwayEnv(gym.Env):
             "junction_straddle": junction_straddle,
             "exit_missed": exit_missed,
             "queue_cut": queue_cut,
+            "nav_shaping": nav_shaping,
             "lane_before": lane_before,
             "lane_after": lane_after,
         }

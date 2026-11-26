@@ -368,6 +368,8 @@ EGO = {
     "depart_lane": "random", # 시작 차선. "random"이면 출발 구간의 차선 중 무작위.
                            # "center"면 중앙 차선(차선수//2), 숫자면 그 차선.
                            # OSM 도로망에서 "random"이 아니면 경로상 최적 차선("best").
+    "depart_lane_spacing": 80.0, # "random"일 때 차선 변경 1회에 필요한 거리 (m).
+                           # |필요한 차선 변경 수| × 이 값이 남은 거리보다 긴 차선에서는 출발하지 않는다.
     "depart_speed": 10,    # 시작 속도 (m/s)
 
     # 횡방향 행동 a ∈ [-1,1] → 횡가속도 a × lc_accel_lat (m/s^2).

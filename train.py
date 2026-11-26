@@ -47,14 +47,17 @@ REWARD_OVERRIDES = dict(
     red_light_penalty=5.0,     # 적색 신호 통과 시 -이 값, 즉시 종료
     arrival_bonus=2.0,         # 완주 보너스
     safe_gap_penalty=0.1,      # UN R157 최소 차간거리 위반 시 스텝당 최대 감점
-    slow_penalty=0.1,          # 앞 공간이 d_min보다 넓은데 느리면 스텝당 최대 감점
+    slow_penalty=0.05,         # 앞 공간이 d_min보다 넓은데 느리면 스텝당 최대 감점
     slow_tolerance=0.2,        #   기준 속도(앞차 속도, 제한속도)보다 20%까지 느린 건 허용
     exit_miss_penalty=4.0,     # 출구 놓침(경로로 이어지지 않는 차선 끝 도달) 시 감점 후 종료
-    queue_cut_penalty=0.5,     # 합류 완료 시 밀려난 대기 줄 차량 1대당 감점
+    queue_cut_penalty=0.3,     # 합류 완료 시 밀려난 대기 줄 차량 1대당 감점
+    queue_cut_max_penalty=3.0, #   합류 1회당 대기 줄 앞지르기 감점 상한 (0=상한 없음)
     overlap_penalty=0.05,      # 차선 경계에 걸친 폭에 비례한 스텝당 감점
     overlap_grace=3.0,         #   처음 걸친 뒤 이 시간(s) 동안은 겹침 감점 없음
     junction_overlap_penalty=0.5,  # 차선에 걸친 채 교차로 진입 시 1회 감점
     blocked_penalty=0.05,      # 더 빠른 인접 차선을 두고 머무는 기회비용 감점 (스텝당 최대)
+    nav_shaping_weight=0.5,    # 출구 접근 시 최적 차선 포텐셜 크기 (차선 1칸당 최대, 0=비활성)
+    nav_shaping_horizon=300.0, # 내비게이션 셰이핑 시작 잔여거리 (m)
     invalid_action_penalty=0.0,# 차선이 없는 방향 차선변경 트리거 감점
 )
 REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}

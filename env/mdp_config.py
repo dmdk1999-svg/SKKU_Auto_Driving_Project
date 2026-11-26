@@ -85,7 +85,7 @@ SIMULATION = {
 #   [36] ego 횡속도 / Ws
 #   [37] 좌1 후행차 가속도 / 최대감속                (없으면 0)
 #   [38] 우1 후행차 가속도 / 최대감속                (없으면 0)
-#   [39] 필요한 차선 변경 수 / 2 (getBestLanes, +왼쪽)
+#   [39] 필요한 차선 변경 수 / lane_offset_scale (getBestLanes, +왼쪽)
 #   [40] 현재 차선으로 경로를 따라 주행 가능한 잔여 거리 / H
 #   [41] 다음 신호 상태 (적색 -1, 황색 0.5, 녹색 1, 신호 없음 0)
 #   [42] 다음 신호 정지선까지 거리 / signal_horizon  (신호 없으면 1)
@@ -103,6 +103,7 @@ OBSERVATION = {
     "straddle_horizon": 10.0,    # 걸친 후 경과시간 정규화 기준 (s)
     "lat_speed_scale": 1.0,      # 횡속도 정규화 기준 (m/s)
     "route_horizon": 500.0,      # 경로 잔여거리 정규화 기준 (m)
+    "lane_offset_scale": 6.0,    # 필요한 차선 변경 수 정규화 기준 (경로상 최대 6)
     "visibility": 50.0,          # 관측 가능 거리 W (m). 앞뒤 차량 감지와
                                  # 상대거리/연결성/밀도 정규화의 기준.
     "density_veh_length": 7.5,   # 밀도 계산 시 차량 1대의 점유 길이 (m)
@@ -153,11 +154,13 @@ ACTION = {
 # 4) 보상 (Reward, R)
 #
 # 매 스텝 보상 = speed_weight * min(이동거리 / (제한속도 × dt), 1) ← 진행할수록 +
-#              - safe_gap_penalty × (1 - 간격/d_min) (간격 < d_min) ← 안전거리 벌점
+#              - safe_gap_penalty × (1 - 간격/d_min)² (간격 < d_min) ← 안전거리 벌점
 #              - slow_penalty × (부족분 - tol)/(1 - tol)  ← 앞 공간 > d_min인데 느릴 때
 #                  부족분 = 1 - 속도/기준속도, 기준속도 = min(제한속도, 앞차 속도)
 #                  (적색·황색 정지선은 속도 0인 앞차로 본다)
 #              - queue_cut_penalty × 밀려난 대기 줄 차량 수  ← 합류 완료 스텝
+#              + (Φ(s') - Φ(s))                           ← 내비게이션 포텐셜 셰이핑
+#                  Φ(s) = -nav_shaping_weight × |필요 차선변경 수| × clip(1 - 잔여거리/nav_shaping_horizon, 0, 1)
 # 종료 벌점   = -exit_miss_penalty (경로로 이어지지 않는 차선 끝 도달)
 #              - overlap_penalty × (걸친 폭/차 폭)  ← 처음 걸친 지 overlap_grace초 뒤부터
 #              - junction_overlap_penalty           ← 걸친 채 교차로에 들어간 스텝
@@ -172,15 +175,18 @@ ACTION = {
 REWARD = {
     "speed_weight": 0.1,         # 진행 거리 보상 가중치. 한 스텝 최대 +0.1
     "safe_gap_penalty": 0.1,     # 앞차 간격이 최소 차간거리 d_min (UN R157, 정지 시 1m) 미만이면
-                                 #   위반 정도(1 - 간격/d_min)에 비례해 스텝당 최대 이만큼 감점
-    "slow_penalty": 0.1,         # 앞 공간이 d_min보다 넓은데 기준 속도보다 느리면 스텝당 최대 감점
+                                 #   위반 정도(1 - 간격/d_min)의 제곱에 비례해 스텝당 최대 이만큼 감점
+    "slow_penalty": 0.05,        # 앞 공간이 d_min보다 넓은데 기준 속도보다 느리면 스텝당 최대 감점
     "slow_tolerance": 0.2,       #   기준 속도보다 이 비율까지 느린 것은 감점하지 않는다
+    "slow_comfort_decel": 2.0,   #   기준 속도 계산에 쓰는 편안한 감속도 b (m/s^2).
+                                 #   기준 속도 = min(제한속도, sqrt(v_obs² + 2b·max(간격 − d_min(v_obs), 0)))
     "exit_miss_penalty": 4.0,    # 경로로 이어지지 않는 차선 끝에 도달하면 이만큼 감점 후 종료
                                  #   (접촉보다 작고 다른 벌점 누적보다 커야 한다)
     "exit_miss_distance": 5.0,   #   차선 끝까지 이 거리(m) 이하면 출구를 놓친 것으로 본다
-    "queue_cut_penalty": 0.5,    # 합류 완료 시 ego 뒤로 밀려난 대기 줄 차량 1대당 감점
+    "queue_cut_penalty": 0.3,    # 합류 완료 시 ego 뒤로 밀려난 대기 줄 차량 1대당 감점
+    "queue_cut_max_penalty": 3.0,  #   합류 1회당 대기 줄 앞지르기 감점 상한 (0이면 상한 없음)
     "queue_speed": 5.0,          #   대기 줄 차량: 속도가 이 값(m/s) 미만이고
-    "queue_gap": 10.0,           #   앞차와의 간격이 이 값(m) 이하인 차량이 연속된 묶음
+    "queue_gap": 2.5,            #   앞차와의 간격(minGap 제외)이 이 값(m) 이하인 차량이 연속된 묶음
     "overlap_penalty": 0.05,     # 차체가 차선 경계를 넘어 걸친 폭/차 폭에 비례해 스텝당 감점
     "overlap_grace": 3.0,        #   처음 걸친 뒤 이 시간(s) 동안은 감점하지 않는다.
                                  #   정상 차선변경은 이 안에 끝나고, 걸친 채 버틸 때만 감점된다
@@ -203,6 +209,15 @@ REWARD = {
     #   변경으로 탈출 = 감점 즉시 중단"이라는 즉각적 차등을 만들어
     #   정확히 그 상태에서 차선변경을 배우게 한다.
     "blocked_penalty": 0.05,     # 흐름 속도 차가 제한속도만큼일 때의 스텝당 감점 (0이면 비활성)
+
+    # ---- 내비게이션 포텐셜 셰이핑: 출구놓침 지연 신호를 즉발 신호로 연결 ----
+    # Φ(s) = -nav_shaping_weight × |best_offset| × clip(1 - remain / nav_shaping_horizon, 0, 1)
+    # 매 스텝 Φ(s') - Φ(s)를 더한다. (교차로 내부에서는 직전 Φ 유지)
+    #   · remain ≥ nav_shaping_horizon 구간에서는 Φ=0이라 추월을 방해하지 않는다.
+    #   · 출구가 가까워질수록 비최적 차선 체류 시 소폭 감점, 목표 차선 이동 시 즉각 보상.
+    #   · Φ(s) ≤ 0인 포텐셜 차분이므로 왕복 파밍의 순이익이 항상 ≤ 0이다.
+    "nav_shaping_weight": 0.5,    # 차선 1칸당 최대 포텐셜 크기 (0이면 비활성)
+    "nav_shaping_horizon": 300.0, # 셰이핑이 켜지는 잔여거리 기준 (m, route_horizon 이하 권장)
 
     # ---- 차선변경 관련 (원본 Flow 코드의 rl_action_penalty 대응) ----
     "invalid_action_penalty": 0.0,  # 차선이 없는 방향으로 차선변경을 트리거하면 감점.
