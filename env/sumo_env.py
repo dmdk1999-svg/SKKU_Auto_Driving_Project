@@ -906,9 +906,10 @@ class SumoHighwayEnv(gym.Env):
         ``getLeader``의 간격도 minGap을 뺀 값이라 같은 기준이 된다. 시야 밖이거나 멈출
         정지선이 없으면 None이다.
 
-        현재 차선은 경로상 다음 신호를 본다. 옆 차선은 같은 edge 안에서 그 차선 끝의
-        신호 연결 상태를 본다. 경로의 다음 edge로 가는 연결이 있으면 그 연결을, 없으면
-        가장 제한적인 연결을 쓴다. 황색은 ego가 같은 진입로에서 처음 본 판정을 쓰고,
+        현재 차선은 경로상 다음 신호를 본다. 옆 차선은 시야 안에서 경로를 따라 신호가
+        제어하는 차선을 찾고, 그 차선 끝의 신호 연결 상태를 본다. 신호 진입 edge가 시야보다
+        짧으면 다음 edge까지 따라간다. 경로의 다음 edge로 가는 연결이 있으면 그 연결을, 없으면
+        가장 제한적인 연결을 쓴다. 황색은 ego가 같은 진입 edge에서 처음 본 판정을 쓰고,
         판정이 없으면 지금 속도로 판정한다.
 
         Args:
@@ -920,23 +921,37 @@ class SumoHighwayEnv(gym.Env):
             return None
         if offset == 0:
             light = self._next_light()
-            if light is None:
+            if light is None or light[2] > self.visibility:
                 return None
             dist, state = light[2], light[3]
+            controlled = traci.trafficlight.getControlledLinks(light[0])[light[1]]
+            line_edge = controlled[0][0].rpartition("_")[0] if controlled else None
         else:
             index = traci.vehicle.getLaneIndex(self.ego_id) + offset
             if not 0 <= index < traci.edge.getLaneNumber(edge):
                 return None
-            lane_id = f"{edge}_{index}"
-            if lane_id not in self._tls_lanes:
-                return None
-            links = traci.lane.getLinks(lane_id)
-            if not links:
-                return None
             route = traci.vehicle.getRoute(self.ego_id)
             route_index = traci.vehicle.getRouteIndex(self.ego_id)
-            next_edge = route[route_index + 1] if route_index + 1 < len(route) else None
-            onward = [link for link in links if traci.lane.getEdgeID(link[0]) == next_edge]
+
+            def route_edge(hop):
+                i = route_index + hop
+                return route[i] if 0 <= route_index and i < len(route) else None
+
+            lane_id = f"{edge}_{index}"
+            dist = traci.lane.getLength(lane_id) - traci.vehicle.getLanePosition(self.ego_id)
+            hop = 1
+            while lane_id not in self._tls_lanes:
+                onward = [link for link in traci.lane.getLinks(lane_id)
+                          if traci.lane.getEdgeID(link[0]) == route_edge(hop)]
+                if dist >= self.visibility or not onward:
+                    return None
+                lane_id = onward[0][0]
+                dist += traci.lane.getLength(lane_id)
+                hop += 1
+            if dist > self.visibility:
+                return None
+            links = traci.lane.getLinks(lane_id)
+            onward = [link for link in links if traci.lane.getEdgeID(link[0]) == route_edge(hop)]
             states = [link[5] for link in (onward or links)]
             if any(s in _LINK_RED_STATES for s in states):
                 state = "r"
@@ -944,12 +959,10 @@ class SumoHighwayEnv(gym.Env):
                 state = "y"
             else:
                 return None
-            dist = traci.lane.getLength(lane_id) - traci.vehicle.getLanePosition(self.ego_id)
-        if dist > self.visibility:
-            return None
+            line_edge = lane_id.rpartition("_")[0]
         if state in _YELLOW_STATES:
             seen = self._yellow_seen
-            if seen is not None and seen[0][1] == edge:
+            if seen is not None and seen[0][1] == line_edge:
                 stoppable = seen[1]
             else:
                 decel = float(self.rw.get("yellow_comfort_decel", 2.0))
@@ -959,6 +972,17 @@ class SumoHighwayEnv(gym.Env):
         elif state not in _RED_STATES:
             return None
         return max(dist - traci.vehicle.getMinGap(self.ego_id), 0.0)
+
+    def _lead_or_stop_line(self, offset: int, lead, speed: float):
+        """앞차 ``lead``와 멈춰야 할 정지선 중 가까운 쪽을 (간격, 속도)로 반환한다.
+
+        정지선은 속도 0인 앞차로 본다. 둘 다 없으면 None이다. ``lead``는
+        :meth:`_neighbor`가 반환한 (간격, 속도) 또는 None이다.
+        """
+        stop_gap = self._stop_line_gap(offset, speed)
+        if stop_gap is not None and (lead is None or stop_gap < lead[0]):
+            return stop_gap, 0.0
+        return lead
 
     def _r157_min_gap(self, v: float) -> float:
         """속도 ``v``(m/s)에서의 최소 차간거리 d_min(m)을 반환한다.
@@ -1001,7 +1025,8 @@ class SumoHighwayEnv(gym.Env):
 
         감점 = ``blocked_penalty`` × max(0, 인접 차로 흐름 속도 − 현재 차로 흐름 속도)
         / ``speed_ref``. 차로 흐름 속도는 시야 안 앞차 속도이고, 앞차가 없으면
-        ``speed_ref``다. 둘 다 ``speed_ref``를 넘지 않는다. 인접 차로는
+        ``speed_ref``다. 멈춰야 할 정지선이 앞차보다 가까우면 0이다. 둘 다 ``speed_ref``를
+        넘지 않는다. 인접 차로는
         ``getBestLanes`` 기준으로 필요한 차선 변경 수가 0인 경로상 최적 차로만 비교한다.
         진출을 앞두고 다시 돌아와야 하는 차로는 비교하지 않으므로, 진출 대기 줄을
         벗어나도 이 감점은 줄지 않는다. ``leader``는 :meth:`_neighbor`가 반환한
@@ -1011,6 +1036,8 @@ class SumoHighwayEnv(gym.Env):
         edge = traci.vehicle.getRoadID(self.ego_id)
         if weight <= 0.0 or edge.startswith(":"):
             return 0.0
+        ego_speed = traci.vehicle.getSpeed(self.ego_id)
+        leader = self._lead_or_stop_line(0, leader, ego_speed)
         current = speed_ref if leader is None else min(speed_ref, leader[1])
         best = current
         index = traci.vehicle.getLaneIndex(self.ego_id)
@@ -1018,7 +1045,8 @@ class SumoHighwayEnv(gym.Env):
         for offset in (+1, -1):
             if not best_lane.get(f"{edge}_{index + offset}", False):
                 continue
-            adj_leader = self._neighbor(offset, leader=True)
+            adj_leader = self._lead_or_stop_line(
+                offset, self._neighbor(offset, leader=True), ego_speed)
             best = max(best, speed_ref if adj_leader is None
                        else min(speed_ref, adj_leader[1]))
         return weight * (best - current) / speed_ref
@@ -1086,10 +1114,7 @@ class SumoHighwayEnv(gym.Env):
         # ----- 5개 차선(좌2→좌1→현재→우1→우2)의 선행/후행 상대거리·상대속도 -----
         # 시야 안의 적색·정지 대상 황색 정지선이 앞차보다 가까우면 정지선을 멈춘 앞차로 본다.
         for offset in self.obs_offsets:
-            lead = self._neighbor(offset, leader=True)
-            stop_gap = self._stop_line_gap(offset, v)
-            if stop_gap is not None and (lead is None or stop_gap < lead[0]):
-                lead = (stop_gap, 0.0)
+            lead = self._lead_or_stop_line(offset, self._neighbor(offset, leader=True), v)
             if lead is None:
                 obs += [1.0, 1.0]                  # 없음: 멀고 + 위협 없음
             else:
