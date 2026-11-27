@@ -864,7 +864,10 @@ class SumoHighwayEnv(gym.Env):
                 or light[3] not in _YELLOW_STATES):
             self._yellow_seen = None
             return
-        key = (light[0], light[1])
+        # 같은 진입로의 차선은 linkIndex가 달라도 같은 신호로 본다. 차선을 바꿔도 처음
+        # 본 판정을 유지하고, 하나의 tls가 묶어 제어하는 연속 정지선은 진입 edge로 구분한다.
+        links = traci.trafficlight.getControlledLinks(light[0])[light[1]]
+        key = (light[0], links[0][0].rpartition("_")[0] if links else light[1])
         if self._yellow_seen is None or self._yellow_seen[0] != key:
             decel = float(self.rw.get("yellow_comfort_decel", 2.0))
             self._yellow_seen = (key, speed ** 2 / (2.0 * decel) <= light[2])
@@ -1198,15 +1201,15 @@ class SumoHighwayEnv(gym.Env):
             break
         return record
 
-    def _follow_lane(self, lane_id: str, edge: str) -> int | None:
+    def _follow_lane(self, lane_id: str, edge: str, pick) -> int | None:
         """``lane_id``에서 차선 연결을 따라 ``edge``로 이어지는 차선 번호를 반환한다.
 
-        이어지는 차선이 없으면 None이다.
+        한 차선이 ``edge``의 여러 차선으로 갈라지면 그 번호들 중 ``pick``(min 또는 max)으로
+        고른다. 이어지는 차선이 없으면 None이다.
         """
-        for link in traci.lane.getLinks(lane_id):
-            if traci.lane.getEdgeID(link[0]) == edge:
-                return int(link[0].rpartition("_")[2])
-        return None
+        lanes = [int(link[0].rpartition("_")[2]) for link in traci.lane.getLinks(lane_id)
+                 if traci.lane.getEdgeID(link[0]) == edge]
+        return pick(lanes) if lanes else None
 
     def _diverge_straddle(self) -> bool:
         """분기점을 지나 새 edge에 들어선 순간 차체가 다른 가지 쪽 경계 밖에 걸쳤는지 반환한다.
@@ -1219,10 +1222,12 @@ class SumoHighwayEnv(gym.Env):
         prev_edge = self._last_lane.rpartition("_")[0]
         if edge.startswith(":") or edge == prev_edge or self._overlap() <= 0.0:
             return False
+        # getLinks는 한 차선의 연결을 오른쪽부터 반환한다. (차선 번호, 연결 순서)로 기록해
+        # 한 차선이 본선과 분기 양쪽으로 이어지는 겸용 차선 분기도 좌우를 구분한다.
         here, other = set(), set()
         for i in range(traci.edge.getLaneNumber(prev_edge)):
-            for link in traci.lane.getLinks(f"{prev_edge}_{i}"):
-                (here if traci.lane.getEdgeID(link[0]) == edge else other).add(i)
+            for k, link in enumerate(traci.lane.getLinks(f"{prev_edge}_{i}")):
+                (here if traci.lane.getEdgeID(link[0]) == edge else other).add((i, k))
         if not here or not other:
             return False
         index = traci.vehicle.getLaneIndex(self.ego_id)
@@ -1252,18 +1257,21 @@ class SumoHighwayEnv(gym.Env):
         edge = traci.vehicle.getRoadID(self.ego_id)
         if edge != self.lc_edge:
             if self._last_lane in self._tls_lanes:
-                junction_straddle = edge.startswith(":") and overlap > 0.0
+                junction_straddle = overlap > 0.0
                 self._reset_maneuver()
                 return 0, junction_straddle, False
             if edge.startswith(":"):
-                if self.lc_straddled:
-                    self.lc_straddle_steps += 1
+                # 노드 내부에서는 횡이동이 멈추므로 걸친 시간(겹침 유예)을 세지 않는다.
                 return 0, False, False
-            target = self._follow_lane(f"{self.lc_edge}_{self.lc_target}", edge)
+            # 갈라지면 출발 차선과의 경계에 가까운 쪽을 고른다. 왼쪽 기동(+1)이면 목표는
+            # 가장 오른쪽, 출발은 가장 왼쪽이다.
+            inner, outer = (min, max) if self.lc_dir > 0 else (max, min)
+            target = self._follow_lane(f"{self.lc_edge}_{self.lc_target}", edge, inner)
             if target is None:
                 self._reset_maneuver()
                 return 0, False, False
-            origin = self._follow_lane(f"{self.lc_edge}_{self.lc_origin}", edge)
+            origin = (None if self.lc_origin < 0 else
+                      self._follow_lane(f"{self.lc_edge}_{self.lc_origin}", edge, outer))
             self.lc_edge = edge
             self.lc_target = target
             self.lc_origin = -1 if origin is None else origin
