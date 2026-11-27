@@ -54,8 +54,13 @@ if "SUMO_HOME" not in os.environ:
 
 sys.path.append(os.path.join(os.environ["SUMO_HOME"], "tools"))
 
-import traci
+import traci as _traci_socket
 from sumolib import checkBinary
+
+# SUMO 제어 백엔드. 기본은 소켓 방식 TraCI이고, SIMULATION["use_libsumo"]가 True이며
+# GUI가 아니면 SumoHighwayEnv 생성 시 libsumo(같은 프로세스 안에서 직접 호출)로 바꾼다.
+# 두 모듈은 같은 API를 제공한다. 한 프로세스에서는 한 백엔드만 쓴다.
+traci = _traci_socket
 
 from env.road_builder import npc_vtype_ids, osm_config, prefill_plan
 
@@ -98,6 +103,12 @@ class SumoHighwayEnv(gym.Env):
         super().__init__()
         self.cfg_path = cfg_path
         self.gui = gui
+        global traci
+        if bool(mdp_sim.get("use_libsumo", False)) and not gui:
+            import libsumo
+            traci = libsumo
+        else:
+            traci = _traci_socket
         self.gui_autostart = gui_autostart
 
         # ----- 도로/차량 설정에서 필요한 값들 -----
@@ -461,7 +472,8 @@ class SumoHighwayEnv(gym.Env):
         if offset == 0:
             if leader:
                 res = traci.vehicle.getLeader(self.ego_id, self.visibility)
-                if res is None:
+                # TraCI는 앞차가 없으면 None, libsumo는 ("", -1)을 반환한다.
+                if res is None or not res[0]:
                     return None
                 vid, gap = res
             else:
