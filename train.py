@@ -47,14 +47,15 @@ REWARD_OVERRIDES = dict(
     red_light_penalty=9.0,     # 적색 신호 통과 시 -이 값, 즉시 종료
     arrival_bonus=2.0,         # 완주 보너스
     safe_gap_penalty=0.1,      # UN R157 최소 차간거리 위반 시 스텝당 최대 감점
-    slow_penalty=0.05,         # 앞 공간이 d_min보다 넓은데 느리면 스텝당 최대 감점
-    slow_tolerance=0.2,        #   기준 속도(앞차 속도, 제한속도)보다 20%까지 느린 건 허용
+    slow_penalty=0.1,          # 속도에 비해 앞 장애물과의 간격이 넓으면 스텝당 최대 감점
+    slow_tolerance=0.2,        #   제한속도보다 20%까지 느린 건 허용
+    yellow_pass_penalty=3.0,   # 처음 봤을 때 정지할 수 있었던 황색 신호 통과 시 1회 감점
     exit_miss_penalty=6.0,     # 출구 놓침(경로로 이어지지 않는 차선 끝 도달) 시 감점 후 종료
     queue_cut_penalty=0.3,     # 합류 완료 시 밀려난 대기 줄 차량 1대당 감점
     queue_cut_max_penalty=3.0, #   합류 1회당 대기 줄 앞지르기 감점 상한 (0=상한 없음)
     overlap_penalty=0.05,      # 차선 경계에 걸친 폭에 비례한 스텝당 감점
     overlap_grace=3.0,         #   처음 걸친 뒤 이 시간(s) 동안은 겹침 감점 없음
-    junction_overlap_penalty=0.5,  # 차선에 걸친 채 교차로 진입 시 1회 감점
+    junction_overlap_penalty=0.5,  # 차선에 걸친 채 신호등 교차로 진입 시 1회 감점
     blocked_penalty=0.05,      # 더 빠른 인접 차선을 두고 머무는 기회비용 감점 (스텝당 최대)
     nav_shaping_weight=0.5,    # 출구 접근 시 최적 차선 포텐셜 크기 (차선 1칸당 최대, 0=비활성)
     nav_shaping_horizon=300.0, # 내비게이션 셰이핑 시작 잔여거리 (m)
@@ -68,7 +69,7 @@ REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}
 HPARAMS = dict(
     # ---- 최적화 ----
     # lr=1e-4,                 # 학습률. 보상이 요동치면 낮출 것 (3e-4 → 1e-4 → 5e-5)
-    lr=1e-4,
+    lr=1.5e-4,
     n_steps=8192,            # rollout 길이. 크면 advantage 추정이 안정적
     n_epochs=10,             # 모은 데이터 재사용 횟수
     minibatch_size=256,
@@ -122,7 +123,7 @@ LOG_INTERVAL = 1        # 몇 번의 업데이트마다 콘솔에 출력할지
 RESULTS_DIR = "results" # 결과 저장 폴더
 RUN_NAME = None         # None이면 run_날짜_시각 자동 생성.
                         # 문자열을 주면 그 이름으로 저장 (예: "exp_lr1e-4")
-RESUME = "/mnt/i/orca/workspaces/SKKU_Auto_Driving_Project/exp-curr-slack-side-cancel-pen/results/run_20261127_145213/checkpoints/ckpt_954368.pt"  # 이어 학습할 체크포인트 경로. None이면 처음부터 학습.
+RESUME = None  # 이어 학습할 체크포인트 경로. None이면 처음부터 학습.
                         # 예: "results/run_20261126_134914/checkpoints/ckpt_102400.pt"
                         # 그 체크포인트의 run 폴더에 이어서 기록하고, 이후 스텝의 기존 로그는 버린다.
                         # TOTAL_TIMESTEPS는 이어 학습한 스텝을 포함한 전체 스텝 수다.
