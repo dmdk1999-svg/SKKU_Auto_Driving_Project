@@ -59,6 +59,7 @@ REWARD_OVERRIDES = dict(
     blocked_penalty=0.05,      # 더 빠른 인접 차선을 두고 머무는 기회비용 감점 (스텝당 최대)
     nav_shaping_weight=0.5,    # 출구 접근 시 최적 차선 포텐셜 크기 (차선 1칸당 최대, 0=비활성)
     nav_shaping_horizon=300.0, # 내비게이션 셰이핑 시작 잔여거리 (m)
+    red_approach_shaping_weight=0.5,  # 적색 정지선 접근 포텐셜 크기 (필요 감속도 초과 1 m/s^2당)
     invalid_action_penalty=0.0,# 차선이 없는 방향 차선변경 트리거 감점
 )
 REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}

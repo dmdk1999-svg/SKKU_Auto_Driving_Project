@@ -204,6 +204,8 @@ class SumoHighwayEnv(gym.Env):
         self.route_timeout = dict(osm.get("ego_route_timeout", {})) if osm else {}
         self.episode_max_steps = self.max_steps
         self.warmup_steps = int(osm["warmup_steps"] if osm else mdp_sim["warmup_steps"])
+        # 워밍업 길이를 에피소드마다 ±이 스텝 안에서 무작위로 바꿔 신호 주기에 대한 도착 시점을 섞는다.
+        self.warmup_jitter = int(osm.get("warmup_jitter_steps", 0)) if osm else 0
         self.visibility = float(mdp_obs["visibility"])   # 관측 거리 W
         # 밀도 정규화용 "차량 1대가 점유하는 길이" (차체 + 최소 간격)
         self.density_veh_len = float(mdp_obs.get("density_veh_length", 7.5))
@@ -232,6 +234,7 @@ class SumoHighwayEnv(gym.Env):
         self.ego_id = "ego"        # SUMO 안에서 ego 차량을 식별하는 ID
         self.step_count = 0
         self._nav_phi = 0.0
+        self._red_phi = 0.0
         self._started = False      # SUMO 프로세스가 떠 있는지 여부
         # 신호등이 제어하는 진입 차선 ID 집합이다. reset에서 채운다.
         self._tls_lanes = frozenset()
@@ -413,7 +416,8 @@ class SumoHighwayEnv(gym.Env):
         if self.prefill_enabled:
             self._prefill_traffic()
         # 배치된 차들이 자리를 잡도록 몇 스텝만 정착시킨다.
-        for _ in range(self.warmup_steps):
+        jitter = np.random.randint(-self.warmup_jitter, self.warmup_jitter + 1)
+        for _ in range(max(self.warmup_steps + jitter, 0)):
             traci.simulationStep()
 
         # ego 차량 투입 — 반드시 "도로 시작점(0m)"에서 출발
@@ -484,6 +488,7 @@ class SumoHighwayEnv(gym.Env):
         self._reset_maneuver()
         self._nav_phi = (0.0 if traci.vehicle.getRoadID(self.ego_id).startswith(":")
                          else self._nav_potential())
+        self._red_phi = self._red_potential()
         return self._get_obs(), {}
 
     def _reset_maneuver(self) -> None:
@@ -829,6 +834,25 @@ class SumoHighwayEnv(gym.Env):
         offset, remain = self._best_lane_info()
         urgency = float(np.clip(1.0 - self._lane_slack(offset, remain) / horizon, 0.0, 1.0))
         return -weight * abs(offset) * urgency
+
+    def _red_potential(self) -> float:
+        """적색 정지선 접근 포텐셜 Φ(s) ≤ 0을 반환한다.
+
+        Φ(s) = -red_approach_shaping_weight × clip(v² / (2d) - b, 0, 최대 감속도 - b)이다.
+        d는 ``signal_horizon`` 안에 보이는 적색 신호의 정지선까지 거리(m)이고, b는
+        ``yellow_comfort_decel``이다. 편안한 감속으로 정지선 앞에 설 수 있으면 0이고, 더 세게
+        감속해야 할수록 낮아진다. 적색 신호가 보이지 않으면 0이다.
+        """
+        weight = float(self.rw.get("red_approach_shaping_weight", 0.0))
+        if weight <= 0.0:
+            return 0.0
+        light = self._next_light()
+        if light is None or light[2] > self.signal_horizon or light[3] not in _RED_STATES:
+            return 0.0
+        comfort = float(self.rw.get("yellow_comfort_decel", 2.0))
+        speed = traci.vehicle.getSpeed(self.ego_id)
+        need = speed * speed / (2.0 * max(light[2], 0.1))
+        return -weight * float(np.clip(need - comfort, 0.0, self.max_decel - comfort))
 
     def _queue_cut_count(self) -> int:
         """ego 바로 뒤에 이어진 대기 줄의 차량 수를 반환한다.
@@ -1516,6 +1540,12 @@ class SumoHighwayEnv(gym.Env):
                 nav_shaping = new_phi - self._nav_phi
                 self._nav_phi = new_phi
                 reward += nav_shaping
+
+            # ---- 적색 정지선 접근 포텐셜 셰이핑: 조금씩 감속해도 바로 보상 ----
+            # 적색 통과로 끝나는 스텝에는 더하지 않는다. 더하면 통과 순간 -Φ만큼 보너스가 생긴다.
+            new_red_phi = self._red_potential()
+            reward += new_red_phi - self._red_phi
+            self._red_phi = new_red_phi
 
         if self.step_count >= self.episode_max_steps:
             truncated = True

@@ -178,6 +178,9 @@ ACTION = {
 #              + (Φ(s') - Φ(s))                           ← 내비게이션 포텐셜 셰이핑
 #                  Φ(s) = -nav_shaping_weight × |필요 차선변경 수| × clip(1 - 여유거리/nav_shaping_horizon, 0, 1)
 #                  여유거리 = 잔여거리 - |필요 차선변경 수| × 제한속도 × lane_change_time
+#              + (Ψ(s') - Ψ(s))                           ← 적색 정지선 접근 포텐셜 셰이핑
+#                  Ψ(s) = -red_approach_shaping_weight × clip(v²/(2d) - yellow_comfort_decel, 0, 최대 감속도 - yellow_comfort_decel)
+#                  d = signal_horizon 안 적색 정지선까지 거리. 적색이 안 보이면 0
 # 종료 벌점   = -exit_miss_penalty (경로로 이어지지 않는 차선 끝 도달)
 #              - overlap_penalty × (걸친 폭/차 폭)  ← 처음 걸친 지 overlap_grace초 뒤부터
 #              - junction_overlap_penalty           ← 걸친 채 신호등 교차로에 들어간 스텝
@@ -199,6 +202,8 @@ REWARD = {
     "slow_tolerance": 0.2,       #   제한속도보다 이 비율까지 느린 것은 감점하지 않는다
     "yellow_pass_penalty": 3.0,  # 처음 봤을 때 정지할 수 있었던 황색 신호를 통과하면 1회 감점
     "yellow_comfort_decel": 2.0, #   정지 가능 판정에 쓰는 편안한 감속도 (m/s^2)
+    "red_approach_shaping_weight": 0.5,  # 적색 정지선 앞에 서는 데 필요한 감속도가 편안한
+                                 #   감속도를 넘는 정도(m/s^2)당 포텐셜 크기 (0이면 비활성)
     "exit_miss_penalty": 4.0,    # 경로로 이어지지 않는 차선 끝에 도달하면 이만큼 감점 후 종료
                                  #   (접촉보다 작고 다른 벌점 누적보다 커야 한다)
     "exit_miss_distance": 5.0,   #   차선 끝까지 이 거리(m) 이하면 출구를 놓친 것으로 본다
