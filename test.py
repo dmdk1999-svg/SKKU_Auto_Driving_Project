@@ -118,7 +118,7 @@ if __name__ == "__main__":
         agent = load_agent(model_path, env.observation_space.shape[0],
                            env.action_space.shape[0], args.algorithm)
         metrics = evaluate_policy(agent, env, n_episodes=args.episodes,
-                                  deterministic=True)
+                                  deterministic=True, verbose=True)
     finally:
         env.close()
 
