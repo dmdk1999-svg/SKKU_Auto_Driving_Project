@@ -33,7 +33,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 # ══════════════════════════════════════════════════════════════════
 #  하이퍼파라미터 — 실험은 여기서
 # ══════════════════════════════════════════════════════════════════
-TOTAL_TIMESTEPS = 200_000   # 총 학습 스텝 수
+TOTAL_TIMESTEPS = 5_000_000   # 총 학습 스텝 수
 
 # ══════════════════════════════════════════════════════════════════
 #  보상 튜닝 — env/mdp_config.py 의 기본값을 여기서 덮어쓴다.
@@ -43,13 +43,13 @@ TOTAL_TIMESTEPS = 200_000   # 총 학습 스텝 수
 # ══════════════════════════════════════════════════════════════════
 REWARD_OVERRIDES = dict(
     speed_weight=0.1,          # 진행 거리 보상 (스텝당 최대 이 값)
-    collision_penalty=5.0,     # 충돌 시 -이 값, 즉시 종료
-    red_light_penalty=5.0,     # 적색 신호 통과 시 -이 값, 즉시 종료
+    collision_penalty=10.0,    # 충돌 시 -이 값, 즉시 종료
+    red_light_penalty=9.0,     # 적색 신호 통과 시 -이 값, 즉시 종료
     arrival_bonus=2.0,         # 완주 보너스
     safe_gap_penalty=0.1,      # UN R157 최소 차간거리 위반 시 스텝당 최대 감점
     slow_penalty=0.05,         # 앞 공간이 d_min보다 넓은데 느리면 스텝당 최대 감점
     slow_tolerance=0.2,        #   기준 속도(앞차 속도, 제한속도)보다 20%까지 느린 건 허용
-    exit_miss_penalty=4.0,     # 출구 놓침(경로로 이어지지 않는 차선 끝 도달) 시 감점 후 종료
+    exit_miss_penalty=6.0,     # 출구 놓침(경로로 이어지지 않는 차선 끝 도달) 시 감점 후 종료
     queue_cut_penalty=0.3,     # 합류 완료 시 밀려난 대기 줄 차량 1대당 감점
     queue_cut_max_penalty=3.0, #   합류 1회당 대기 줄 앞지르기 감점 상한 (0=상한 없음)
     overlap_penalty=0.05,      # 차선 경계에 걸친 폭에 비례한 스텝당 감점
@@ -68,7 +68,7 @@ REWARD = {**REWARD_DEFAULTS, **REWARD_OVERRIDES}
 HPARAMS = dict(
     # ---- 최적화 ----
     # lr=1e-4,                 # 학습률. 보상이 요동치면 낮출 것 (3e-4 → 1e-4 → 5e-5)
-    lr=5e-5,
+    lr=1e-4,
     n_steps=2048,            # rollout 길이. 크면 advantage 추정이 안정적
     n_epochs=10,             # 모은 데이터 재사용 횟수
     minibatch_size=64,
@@ -117,11 +117,16 @@ HPARAMS = dict(
 
 # ---- 평가 / 로깅 ----
 EVAL_INTERVAL = 5       # 몇 번의 업데이트마다 주행 지표를 평가할지 (0이면 안 함)
-EVAL_EPISODES = 5       # 평가 1회당 에피소드 수
+EVAL_EPISODES = 10      # 평가 1회당 에피소드 수
 LOG_INTERVAL = 1        # 몇 번의 업데이트마다 콘솔에 출력할지
 RESULTS_DIR = "results" # 결과 저장 폴더
 RUN_NAME = None         # None이면 run_날짜_시각 자동 생성.
                         # 문자열을 주면 그 이름으로 저장 (예: "exp_lr1e-4")
+RESUME = None           # 이어 학습할 체크포인트 경로. None이면 처음부터 학습.
+                        # 예: "results/run_20261126_134914/checkpoints/ckpt_102400.pt"
+                        # 그 체크포인트의 run 폴더에 이어서 기록하고, 이후 스텝의 기존 로그는 버린다.
+                        # TOTAL_TIMESTEPS는 이어 학습한 스텝을 포함한 전체 스텝 수다.
+                        # 학습률은 체크포인트 값이 아니라 위 HPARAMS의 lr을 쓴다.
 # ══════════════════════════════════════════════════════════════════
 
 
@@ -161,9 +166,11 @@ if __name__ == "__main__":
         print(f"  길이 {ROAD['length']}m, {ROAD['num_lanes']}차선, "
               f"교통량 {TRAFFIC['vehs_per_hour']}대/시간")
 
-    # 2) 결과 폴더 + 로거
-    run_dir = make_run_dir()
-    logger = RunLogger(run_dir)
+    # 2) 결과 폴더. 이어 학습이면 체크포인트가 있는 run 폴더를 그대로 쓴다.
+    if RESUME:
+        run_dir = os.path.dirname(os.path.dirname(os.path.abspath(RESUME)))
+    else:
+        run_dir = make_run_dir()
     print(f"결과 폴더: {run_dir}")
 
     # 3) 환경
@@ -190,6 +197,14 @@ if __name__ == "__main__":
     )
     print(f"obs_dim={env.observation_space.shape[0]}, "
           f"act_dim={env.action_space.shape[0]}, device={agent.device}")
+    if RESUME:
+        extra = agent.load_checkpoint(RESUME)
+        if "demand_scale" in extra:
+            env.demand_scale = float(extra["demand_scale"])
+        print(f"이어 학습: {RESUME} (steps={agent.num_timesteps}, "
+              f"update={agent.n_updates}, best={agent.best_score:.2f})")
+    logger = RunLogger(run_dir,
+                       resume_step=agent.num_timesteps if RESUME else None)
 
     # 5) 학습 → 저장
     #    try/finally: Ctrl+C나 에러로 중단돼도 SUMO 정리 + 결과 저장은 수행
@@ -199,7 +214,8 @@ if __name__ == "__main__":
                     logger=logger,
                     log_interval=LOG_INTERVAL,
                     eval_interval=EVAL_INTERVAL,
-                    eval_episodes=EVAL_EPISODES)
+                    eval_episodes=EVAL_EPISODES,
+                    run_dir=run_dir)
     finally:
         env.close()
         logger.close()

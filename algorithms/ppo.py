@@ -40,6 +40,7 @@ advantage는 GAE(λ)로 추정:
       4) (주기적) 평가  : 노이즈 없는 정책으로 주행 지표 측정
     }
 """
+import os
 from collections import deque
 
 import numpy as np
@@ -143,6 +144,8 @@ class PPO:
         # 이 파일을 수정할 필요가 없다.
         self.buffer = buffer if buffer is not None else RolloutBuffer()
         self.num_timesteps = 0
+        self.n_updates = 0
+        self.best_score = float("-inf")
 
     # ==================================================================
     # 행동 선택
@@ -212,9 +215,13 @@ class PPO:
 
         for _ in range(self.n_steps):
             action, log_prob, value = self.act(obs)
-            next_obs, reward, terminated, truncated, _ = env.step(action)
+            next_obs, reward, terminated, truncated, info = env.step(action)
 
             self.num_timesteps += 1
+            if logger is not None and info.get("collision") is not None:
+                logger.log_collision(self.num_timesteps, "train",
+                                     float(getattr(env, "demand_scale", 1.0)),
+                                     info["collision"])
             ep_stats[0] += reward
             ep_stats[1] += 1
 
@@ -329,17 +336,19 @@ class PPO:
     # ==================================================================
     def learn(self, env, total_timesteps: int, logger=None,
               log_interval: int = 1, eval_interval: int = 0,
-              eval_episodes: int = 5):
+              eval_episodes: int = 5, run_dir: str | None = None):
         """학습 실행.
 
         Args:
             logger: utils.logger.RunLogger (없으면 콘솔 출력만)
             eval_interval: 몇 번의 업데이트마다 평가할지 (0이면 평가 안 함)
+            run_dir: 주어지면 평가마다 ``run_dir/checkpoints/ckpt_<스텝>.pt``에
+                이어 학습용 체크포인트를 저장하고, 평가 평균 보상이 지금까지 가장
+                높으면 ``run_dir/best_model.pt``를 그 정책으로 교체한다.
         """
         obs, _ = env.reset()
         ep_stats = [0.0, 0]                    # [현재 에피소드 보상, 길이]
         recent_returns = deque(maxlen=20)
-        n_updates = 0
 
         while self.num_timesteps < total_timesteps:
             # 1) rollout
@@ -353,7 +362,8 @@ class PPO:
 
             # 3) update
             stats = self.update(advantages, returns)
-            n_updates += 1
+            self.n_updates += 1
+            n_updates = self.n_updates
 
             # 로깅
             metrics = {
@@ -369,16 +379,90 @@ class PPO:
 
             # 4) 주기적 평가 (utils/evaluator.py 사용)
             if eval_interval > 0 and n_updates % eval_interval == 0:
-                m = evaluate_policy(self, env, n_episodes=eval_episodes)
+                step, scale = self.num_timesteps, float(getattr(env, "demand_scale", 1.0))
+                on_collision = (None if logger is None else
+                                lambda r: logger.log_collision(step, "eval", scale, r))
+                m = evaluate_policy(self, env, n_episodes=eval_episodes,
+                                    on_collision=on_collision)
+                eval_metrics = m.as_dict()
+                demand_scale = float(getattr(env, "demand_scale", 1.0))
+                eval_metrics["demand_scale"] = demand_scale
                 if logger is not None:
-                    logger.log_eval(self.num_timesteps, m.as_dict(),
-                                    m.summary(), eval_episodes)
+                    logger.log_eval(self.num_timesteps, eval_metrics,
+                                    f"{m.summary()}  교통량={demand_scale:.1f}배",
+                                    eval_episodes)
+                if run_dir is not None:
+                    # 최고 모델은 최종 교통량(1.0배)에서 평가한 성적끼리만 비교한다.
+                    self._save_eval_checkpoint(run_dir, m.ep_return,
+                                               compare_best=demand_scale >= 1.0,
+                                               extra={"demand_scale": demand_scale})
+                if hasattr(env, "update_demand_curriculum") \
+                        and env.update_demand_curriculum(eval_metrics):
+                    print(f"    [curriculum] 교통량 {demand_scale:.1f}배 → "
+                          f"{env.demand_scale:.1f}배")
                 # 평가가 학습 중이던 에피소드를 끊었으므로 리셋.
                 # (끊긴 경험은 이미 버퍼에 반영됐고 GAE가 부트스트랩하므로 무해)
                 obs, _ = env.reset()
                 ep_stats[0], ep_stats[1] = 0.0, 0
 
     # ==================================================================
+    def _save_eval_checkpoint(self, run_dir: str, score: float,
+                              compare_best: bool = True,
+                              extra: dict | None = None) -> None:
+        """평가 직후 체크포인트를 저장하고, 최고 점수면 ``best_model.pt``를 교체한다.
+
+        Args:
+            run_dir: 학습 결과 폴더.
+            score: 이번 평가의 에피소드 평균 보상.
+            compare_best: False면 최고 점수 비교를 하지 않는다.
+            extra: 체크포인트에 함께 저장할 환경 상태 (예: 교통량 배율).
+        """
+        if compare_best and score > self.best_score:
+            self.best_score = score
+            self.save(os.path.join(run_dir, "best_model.pt"))
+            print(f"    [best] 평가 보상 {score:.2f} → best_model.pt 교체")
+        ckpt_dir = os.path.join(run_dir, "checkpoints")
+        os.makedirs(ckpt_dir, exist_ok=True)
+        self.save_checkpoint(os.path.join(ckpt_dir, f"ckpt_{self.num_timesteps}.pt"),
+                             extra)
+
+    def save_checkpoint(self, path: str, extra: dict | None = None) -> None:
+        """이어 학습에 필요한 정책, 옵티마이저, 진행 상태를 저장한다.
+
+        Args:
+            path: 저장할 파일 경로.
+            extra: 함께 저장할 환경 상태.
+        """
+        torch.save({
+            "policy": self.policy.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "num_timesteps": self.num_timesteps,
+            "n_updates": self.n_updates,
+            "best_score": self.best_score,
+            "extra": extra or {},
+        }, path)
+
+    def load_checkpoint(self, path: str) -> dict:
+        """:meth:`save_checkpoint`로 저장한 상태를 불러와 이어 학습을 준비한다.
+
+        학습률은 체크포인트 값 대신 생성자에 넘긴 현재 설정을 유지한다.
+        함께 저장된 환경 상태(``extra``)를 반환한다.
+
+        Args:
+            path: 체크포인트 파일 경로.
+        """
+        ckpt = torch.load(path, map_location=self.device, weights_only=True)
+        self.policy.load_state_dict(ckpt["policy"])
+        lr = self.optimizer.param_groups[0]["lr"]
+        self.optimizer.load_state_dict(ckpt["optimizer"])
+        # 학습률은 체크포인트 값이 아니라 지금 설정한 값을 쓴다.
+        for group in self.optimizer.param_groups:
+            group["lr"] = lr
+        self.num_timesteps = int(ckpt["num_timesteps"])
+        self.n_updates = int(ckpt["n_updates"])
+        self.best_score = float(ckpt["best_score"])
+        return dict(ckpt.get("extra", {}))
+
     def save(self, path: str):
         torch.save(self.policy.state_dict(), path)
 

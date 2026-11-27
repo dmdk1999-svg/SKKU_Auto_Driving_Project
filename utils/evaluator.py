@@ -10,6 +10,7 @@ PPO든 SAC든, 심지어 규칙 기반 컨트롤러든 똑같이 평가할 수 �
     그래서 주기적으로 노이즈 없는(deterministic) 정책으로 주행시켜
     충돌률 / 완주율 / 평균속도 / 차간거리를 따로 측정한다.
 """
+from collections.abc import Callable
 from dataclasses import dataclass, asdict
 
 import numpy as np
@@ -49,7 +50,8 @@ class DrivingMetrics:
 
 
 def evaluate_policy(policy, env, n_episodes: int = 5,
-                    deterministic: bool = True) -> DrivingMetrics:
+                    deterministic: bool = True,
+                    on_collision: Callable[[dict], None] | None = None) -> DrivingMetrics:
     """정책을 n_episodes 주행시키고 주행 지표 평균을 반환.
 
     Args:
@@ -58,6 +60,7 @@ def evaluate_policy(policy, env, n_episodes: int = 5,
         env:    SumoHighwayEnv (mean_gap 기본값용 visibility 속성만 사용)
         n_episodes: 평가 에피소드 수. 많을수록 지표가 안정적이지만 느리다
         deterministic: True면 탐험 노이즈 없이 평균 행동만 사용
+        on_collision: 주어지면 충돌마다 ``info["collision"]`` 기록으로 호출한다.
 
     Note:
         모든 지표는 env.step()의 info(collided/arrived/speed/gap)에서 읽는다.
@@ -83,6 +86,8 @@ def evaluate_policy(policy, env, n_episodes: int = 5,
             if info.get("lane_change", 0) != 0 and info.get("lane_change_applied"):
                 ep_lc += 1
 
+            if on_collision is not None and info.get("collision") is not None:
+                on_collision(info["collision"])
             if info.get("collided"):
                 ended_by = "collision"
             elif info.get("red_light"):

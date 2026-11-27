@@ -368,8 +368,6 @@ EGO = {
     "depart_lane": "random", # 시작 차선. "random"이면 출발 구간의 차선 중 무작위.
                            # "center"면 중앙 차선(차선수//2), 숫자면 그 차선.
                            # OSM 도로망에서 "random"이 아니면 경로상 최적 차선("best").
-    "depart_lane_spacing": 80.0, # "random"일 때 차선 변경 1회에 필요한 거리 (m).
-                           # |필요한 차선 변경 수| × 이 값이 남은 거리보다 긴 차선에서는 출발하지 않는다.
     "depart_speed": 10,    # 시작 속도 (m/s)
 
     # 횡방향 행동 a ∈ [-1,1] → 횡가속도 a × lc_accel_lat (m/s^2).
@@ -418,6 +416,12 @@ TRAFFIC = {
     #   배우는 것을 줄이기 위한 것이다. train.py에서만 쓰이고, 평가·수집은 항상 최종값이다.
     #   (학습 중 평가도 같은 환경을 쓰므로 그 시점의 값으로 평가된다)
     "emergency_decel_curriculum": {"start": 9.0, "steps": 100_000},
+    # 학습 전용 교통량 커리큘럼 (성적 기준). 전체 교통량을 start배에서 시작해, 학습 중 평가에서
+    #   완주율이 success_above 이상인 평가가 consecutive번 연속되면 increment씩 올려 1.0배까지 늘린다.
+    #   한산할 때 길찾기(차선 선택)를 먼저 배우고, 점점 혼잡한 끼어들기를 배우게 한다.
+    #   학습 중 평가도 그 시점의 교통량으로 한다. 평가·수집 스크립트는 항상 1.0배다.
+    "demand_curriculum": {"start": 0.3, "increment": 0.1,
+                          "success_above": 0.8, "consecutive": 2},
     # 배경차가 정지할 때 앞차와 띄우는 간격 minGap (m). 실제 정체 행렬처럼 차량마다 다르게,
     # 이 범위를 min_gap_levels개로 나눈 값 중 하나를 쓴다. 컨트롤러마다 단계별 vType이 생긴다.
     "min_gap_range": (1.0, 1.5),
