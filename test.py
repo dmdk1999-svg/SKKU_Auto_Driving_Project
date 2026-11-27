@@ -2,6 +2,7 @@
 
 사용법:
     python test.py results/run_20260824_153012/model.pt   ← 모델 경로 지정
+    python test.py results/run_20260824_153012/checkpoints/ckpt_102400.pt   ← 학습 중 체크포인트
     python test.py                                        ← 최근 run 자동 선택
     python test.py --episodes 5 --nogui                   ← 화면 없이 지표만 측정
     python test.py results/bc_example/model.pt --algorithm bc --nogui
@@ -44,6 +45,9 @@ def load_agent(model_path, obs_dim, act_dim, algorithm="auto"):
     checkpoint = torch.load(model_path, map_location="cpu", weights_only=True)
     if not isinstance(checkpoint, dict):
         raise ValueError("지원하지 않는 모델 파일 형식입니다.")
+    # PPO 학습 체크포인트(ckpt_*.pt)는 정책 가중치를 "policy" 키 아래에 둔다.
+    if isinstance(checkpoint.get("policy"), dict):
+        checkpoint = checkpoint["policy"]
     if checkpoint.get("algorithm") == "bc":
         detected = "bc"
     elif "trunk.0.weight" in checkpoint and "mu_head.weight" in checkpoint:

@@ -54,8 +54,13 @@ if "SUMO_HOME" not in os.environ:
 
 sys.path.append(os.path.join(os.environ["SUMO_HOME"], "tools"))
 
-import traci
+import traci as _traci_socket
 from sumolib import checkBinary
+
+# SUMO 제어 백엔드. 기본은 소켓 방식 TraCI이고, SIMULATION["use_libsumo"]가 True이며
+# GUI가 아니면 SumoHighwayEnv 생성 시 libsumo(같은 프로세스 안에서 직접 호출)로 바꾼다.
+# 두 모듈은 같은 API를 제공한다. 한 프로세스에서는 한 백엔드만 쓴다.
+traci = _traci_socket
 
 from env.road_builder import npc_vtype_ids, osm_config, prefill_plan
 
@@ -98,6 +103,12 @@ class SumoHighwayEnv(gym.Env):
         super().__init__()
         self.cfg_path = cfg_path
         self.gui = gui
+        global traci
+        if bool(mdp_sim.get("use_libsumo", False)) and not gui:
+            import libsumo
+            traci = libsumo
+        else:
+            traci = _traci_socket
         self.gui_autostart = gui_autostart
 
         # ----- 도로/차량 설정에서 필요한 값들 -----
@@ -166,10 +177,6 @@ class SumoHighwayEnv(gym.Env):
         self.lat_speed_per_speed = float(ego.get("lat_speed_per_speed", 0.2))
         # 횡속도는 왼쪽이 +이다.
         self.lat_speed = 0.0
-        # 걸쳤다가 취소한 뒤 다시 트리거할 수 없는 시간 (스텝)
-        self.lc_cooldown_steps = int(round(
-            float(action.get("retrigger_cooldown", 2.0)) / float(mdp_sim["step_length"])))
-        self.lc_block_until = 0
         self._reset_maneuver()
 
         # ---- 배경차 비상제동 커리큘럼 (training=True일 때만) ----
@@ -203,7 +210,9 @@ class SumoHighwayEnv(gym.Env):
         self.signal_horizon = float(mdp_obs.get("signal_horizon", 100.0))
         self.junction_horizon = float(mdp_obs.get("junction_horizon", 100.0))
         self.straddle_horizon = float(mdp_obs.get("straddle_horizon", 10.0))
+        self.side_horizon = float(mdp_obs.get("side_horizon", 10.0))
         self.lane_offset_scale = float(mdp_obs.get("lane_offset_scale", 6.0))
+        self.lane_change_time = float(mdp_obs.get("lane_change_time", 4.0))
         self.act_dim = int(action["dim"])
         self.accel_index = int(action.get("accel_index", 0))
         self.lane_change_index = int(action.get("lane_change_index", 1))
@@ -228,14 +237,15 @@ class SumoHighwayEnv(gym.Env):
         # 완료된 차선변경 방향은 info["lane_change"]에 -1/0/+1로 반환한다.
         self.action_space = spaces.Box(low=-1.0, high=1.0,
                                        shape=(self.act_dim,), dtype=np.float32)
-        # 관측: 46차원, 범위 [-1,1]. 레이아웃은 env/mdp_config.py 주석 참고.
+        # 관측: 51차원, 범위 [-1,1]. 레이아웃은 env/mdp_config.py 주석 참고.
         #   시야 차선: 좌2, 좌1, 현재, 우1, 우2 (5개) — 3차선 도로에서
         #   맨 왼쪽에 있어도 오프셋 -2로 맨 오른쪽 차선까지 보인다.
         self.obs_offsets = (+2, +1, 0, -1, -2)
         n_lanes_view = len(self.obs_offsets)
-        # 추가 컬럼 15개는 인접 선행차 횡정보 4, ego 횡상태 2, 인접 후행차 가속도 2,
-        # 내비게이션 2, 신호 2, 기동 방향 1, 교차로 거리 1, 걸친 후 경과시간 1이다.
-        self.obs_dim = 1 + n_lanes_view * 4 + n_lanes_view + n_lanes_view + 15
+        # 추가 컬럼 20개는 인접 선행차 횡정보 4, ego 횡상태 2, 인접 후행차 가속도 2,
+        # 내비게이션 2, 신호 2, 기동 방향 1, 교차로 거리 1, 걸친 후 경과시간 1,
+        # 차선변경 여유거리 1, 측면 차량 종/횡 상대거리 4이다.
+        self.obs_dim = 1 + n_lanes_view * 4 + n_lanes_view + n_lanes_view + 20
         self.observation_space = spaces.Box(-1.0, 1.0, shape=(self.obs_dim,),
                                             dtype=np.float32)
 
@@ -452,7 +462,6 @@ class SumoHighwayEnv(gym.Env):
 
         self.step_count = 0
         self.lat_speed = 0.0
-        self.lc_block_until = 0
         # 마지막으로 차선변경을 완료한 스텝이다. 이번 에피소드에 완료한 적이 없으면 None이다.
         self.last_lc_step = None
         self._reset_maneuver()
@@ -493,11 +502,13 @@ class SumoHighwayEnv(gym.Env):
     def _neighbor(self, offset: int, leader: bool):
         """오프셋 차선(-1=오른쪽, 0=현재, +1=왼쪽)의 가장 가까운
         선행(leader=True)/후행 차량을 (거리 m, 그 차량 속도)로 반환.
+        ego와 종방향으로 겹친 차량의 음수 거리는 0으로 클립한다.
         visibility 밖이거나 없으면 None."""
         if offset == 0:
             if leader:
                 res = traci.vehicle.getLeader(self.ego_id, self.visibility)
-                if res is None:
+                # TraCI는 앞차가 없으면 None, libsumo는 ("", -1)을 반환한다.
+                if res is None or not res[0]:
                     return None
                 vid, gap = res
             else:
@@ -510,9 +521,9 @@ class SumoHighwayEnv(gym.Env):
             # 훑어 가장 가까운 앞/뒤를 찾음)으로 감지한다.
             front, rear = self._scan_lane_neighbors(offset)
             res = front if leader else rear
-            if res is None or res[0] < 0 or res[0] > self.visibility:
+            if res is None or res[0] > self.visibility:
                 return None
-            return float(res[0]), float(res[1])
+            return max(float(res[0]), 0.0), float(res[1])
         else:
             mode_leader, mode_follower = self._NEIGHBOR_MODES[offset]
             pairs = traci.vehicle.getNeighbors(
@@ -521,9 +532,9 @@ class SumoHighwayEnv(gym.Env):
                 return None
             vid, gap = min(pairs, key=lambda p: p[1])   # 가장 가까운 차량
 
-        if gap < 0 or gap > self.visibility:
+        if gap > self.visibility:
             return None
-        return float(gap), traci.vehicle.getSpeed(vid)
+        return max(float(gap), 0.0), traci.vehicle.getSpeed(vid)
 
     def _lane_connectivity(self, offset: int) -> float:
         """오프셋 차선의 '끊김 정도'를 반환.
@@ -633,8 +644,48 @@ class SumoHighwayEnv(gym.Env):
             return None
         return min(pairs, key=lambda p: p[1])[0]
 
+    def _side_obs(self, offset: int) -> list[float]:
+        """좌1(+1)/우1(-1) 차선에서 ego와 종방향으로 가장 가까운 차량의 상대거리를 반환한다.
+
+        반환값은 [종방향 상대거리 / side_horizon, 차체 사이 횡간격 / 차선폭]이다.
+        종방향은 앞이 +이고 [-1, 1], 횡간격은 [0, 1]로 클립한다. ego와 종방향으로
+        겹친 차량도 포함하며, |종방향 거리| <= side_horizon인 차량만 본다.
+        차량이 없거나, ego가 교차로 내부에 있거나, 그 차선이 없으면 [1, 1]이다.
+        """
+        try:
+            edge = traci.vehicle.getRoadID(self.ego_id)
+            ego_li = traci.vehicle.getLaneIndex(self.ego_id)
+            li = ego_li + offset
+            if edge.startswith(":") or li < 0 \
+                    or li >= traci.edge.getLaneNumber(edge):
+                return [1.0, 1.0]
+            ego_len = traci.vehicle.getLength(self.ego_id)
+            ego_center = traci.vehicle.getLanePosition(self.ego_id) - ego_len / 2.0
+            best = None
+            for vid in traci.lane.getLastStepVehicleIDs(f"{edge}_{li}"):
+                center = (traci.vehicle.getLanePosition(vid)
+                          - traci.vehicle.getLength(vid) / 2.0)
+                d = center - ego_center
+                if abs(d) <= self.side_horizon and (best is None or abs(d) < abs(best[1])):
+                    best = (vid, d)
+            if best is None:
+                return [1.0, 1.0]
+            vid, d = best
+            ego_lane_w = traci.lane.getWidth(f"{edge}_{ego_li}")
+            adj_lane_w = traci.lane.getWidth(f"{edge}_{li}")
+            # 횡위치는 각 차선 중앙 기준이고 왼쪽이 +이다.
+            lat_diff = (traci.vehicle.getLateralLanePosition(vid)
+                        - traci.vehicle.getLateralLanePosition(self.ego_id))
+            center_lat = (ego_lane_w + adj_lane_w) / 2.0 + offset * lat_diff
+            gap = center_lat - (traci.vehicle.getWidth(self.ego_id)
+                                + traci.vehicle.getWidth(vid)) / 2.0
+            return [float(np.clip(d / self.side_horizon, -1.0, 1.0)),
+                    float(np.clip(gap / ego_lane_w, 0.0, 1.0))]
+        except traci.TraCIException:
+            return [1.0, 1.0]
+
     def _extra_obs(self):
-        """추가 컬럼 14개 (레이아웃은 env/mdp_config.py 주석 참고).
+        """추가 컬럼 20개 (레이아웃은 env/mdp_config.py 주석 참고).
 
         SUMO의 횡위치는 차선 중앙 기준이며 왼쪽이 +이다.
         """
@@ -688,6 +739,14 @@ class SumoHighwayEnv(gym.Env):
 
         # [45] 처음 걸친 뒤 경과시간 / straddle_horizon (걸치지 않았으면 0)
         obs.append(min(self.lc_straddle_steps * self.step_length / self.straddle_horizon, 1.0))
+
+        # [46] 차선변경 여유거리 / route_horizon. 필요한 차선 변경 수가 0이면 잔여거리와 같다.
+        obs.append(float(np.clip(self._lane_slack(best_offset, remain) / self.route_horizon,
+                                 -1.0, 1.0)))
+
+        # [47..50] 좌1, 우1 측면 차량: 종방향 상대거리, 차체 사이 횡간격
+        for offset in (+1, -1):
+            obs += self._side_obs(offset)
         return obs
 
     def _best_lane_info(self) -> tuple[float, float]:
@@ -703,6 +762,15 @@ class SumoHighwayEnv(gym.Env):
                         lane[1] - traci.vehicle.getLanePosition(self.ego_id))
         return 0.0, self.route_horizon
 
+    def _lane_slack(self, offset: float, remain: float) -> float:
+        """필요한 차선 변경을 모두 마치고 남는 거리(m)를 반환한다.
+
+        slack = remain - |offset| × 제한속도 × ``lane_change_time``. 음수이면
+        현재 제한속도로는 남은 거리 안에 필요한 차선 변경을 마칠 수 없다.
+        """
+        lc_distance = self._speed_limit() * self.lane_change_time
+        return remain - abs(offset) * lc_distance
+
     def _exit_missed(self) -> bool:
         """경로로 이어지지 않는 차선의 끝에 도달했는지 반환한다.
 
@@ -715,15 +783,16 @@ class SumoHighwayEnv(gym.Env):
     def _nav_potential(self) -> float:
         """현재 차선의 경로 정합 포텐셜 Φ(s) ≤ 0을 반환한다.
 
-        Φ(s) = -nav_shaping_weight × |best_offset| × clip(1 - remain / nav_shaping_horizon, 0, 1).
-        출구가 horizon보다 멀면 0이고, 가까워질수록 비최적 차선의 포텐셜이 낮아진다.
+        Φ(s) = -nav_shaping_weight × |best_offset| × clip(1 - slack / nav_shaping_horizon, 0, 1).
+        slack은 ``_lane_slack``의 차선변경 여유거리다. 필요한 차선이 많을수록 slack이
+        작아져 셰이핑이 더 일찍 시작되고, 여유가 줄수록 비최적 차선의 포텐셜이 낮아진다.
         """
         weight = float(self.rw.get("nav_shaping_weight", 0.0))
         horizon = float(self.rw.get("nav_shaping_horizon", 0.0))
         if weight <= 0.0 or horizon <= 0.0:
             return 0.0
         offset, remain = self._best_lane_info()
-        urgency = float(np.clip(1.0 - remain / horizon, 0.0, 1.0))
+        urgency = float(np.clip(1.0 - self._lane_slack(offset, remain) / horizon, 0.0, 1.0))
         return -weight * abs(offset) * urgency
 
     def _queue_cut_count(self) -> int:
@@ -927,7 +996,7 @@ class SumoHighwayEnv(gym.Env):
         for offset in self.obs_offsets:
             obs.append(self._lane_density(offset))
 
-        # ----- 추가 컬럼 [31..44] -----
+        # ----- 추가 컬럼 [31..49] -----
         obs += self._extra_obs()
 
         return np.clip(np.array(obs, dtype=np.float32), -1.0, 1.0)
@@ -984,17 +1053,13 @@ class SumoHighwayEnv(gym.Env):
             return -1
         return 0
 
-    def _lc_cooling_down(self) -> bool:
-        """걸쳤다가 취소한 직후라 새 트리거를 받지 않는 중인지 반환한다."""
-        return self.step_count < self.lc_block_until
-
     def _start_maneuver(self, command: int) -> bool:
         """``command`` 방향으로 차선변경 기동을 시작한다.
 
         기동이 없고 교차로 밖일 때만 시작한다. 목표 차선이 없으면 기동을 시작하지
         않고 False를 반환하며, 그 밖의 경우는 True를 반환한다.
         """
-        if command == 0 or self.lc_dir != 0 or self._lc_cooling_down():
+        if command == 0 or self.lc_dir != 0:
             return True
         edge = traci.vehicle.getRoadID(self.ego_id)
         if edge.startswith(":"):
@@ -1109,40 +1174,35 @@ class SumoHighwayEnv(gym.Env):
             break
         return record
 
-    def _update_maneuver(self) -> tuple[int, bool]:
+    def _update_maneuver(self) -> tuple[int, bool, bool]:
         """시뮬레이션 스텝 뒤 기동의 걸침, 완료, 취소를 판정한다.
 
         차체가 한 차선 안에 완전히 들어오면 기동이 끝난다. 목표 차선이면 완료,
         출발 차선이면 취소다. 걸친 채 교차로에 들어가거나 기동 중 도로가 바뀌면
         취소로 끝낸다.
 
-        Returns ``(완료된 차선변경 방향, 걸친 채 교차로에 들어갔는지)``이다.
-        완료되지 않았으면 방향은 0이다.
+        Returns ``(완료된 차선변경 방향, 걸친 채 교차로에 들어갔는지,
+        걸쳤다가 출발 차선으로 돌아왔는지)``이다. 완료되지 않았으면 방향은 0이다.
         """
         if self.lc_dir == 0:
-            return 0, False
+            return 0, False, False
         overlap = self._overlap()
         edge = traci.vehicle.getRoadID(self.ego_id)
         if edge != self.lc_edge:
             junction_straddle = edge.startswith(":") and overlap > 0.0
-            if self.lc_straddled:
-                self.lc_block_until = self.step_count + self.lc_cooldown_steps
             self._reset_maneuver()
-            return 0, junction_straddle
+            return 0, junction_straddle, False
         if overlap > 0.0:
             if self.lc_straddled:
                 self.lc_straddle_steps += 1
             self.lc_straddled = True
-            return 0, False
+            return 0, False, False
         if not self.lc_straddled:
-            return 0, False
+            return 0, False, False
         completed = self.lc_dir if (
             traci.vehicle.getLaneIndex(self.ego_id) == self.lc_target) else 0
-        if completed == 0:
-            # 걸쳤다가 출발 차선으로 돌아온 취소: 잠시 다시 트리거하지 못하게 한다
-            self.lc_block_until = self.step_count + self.lc_cooldown_steps
         self._reset_maneuver()
-        return completed, False
+        return completed, False, completed == 0
 
     def get_privileged_state(self) -> dict:
         """POMDP 데이터셋용 simulator-side state.
@@ -1219,7 +1279,7 @@ class SumoHighwayEnv(gym.Env):
 
             # 이번 스텝에 [1]과 [2]가 실제로 쓰였는지 기록한다.
             in_junction = traci.vehicle.getRoadID(self.ego_id).startswith(":")
-            lc_used = self.lc_dir == 0 and not in_junction and not self._lc_cooling_down()
+            lc_used = self.lc_dir == 0 and not in_junction
             lat_used = self.lc_dir != 0 and self.lc_straddled and not in_junction
             lateral_valid = self._start_maneuver(lc_command)
             lc_started = lc_used and self.lc_dir != 0
@@ -1238,10 +1298,10 @@ class SumoHighwayEnv(gym.Env):
         lane_after = int(traci.vehicle.getLaneIndex(self.ego_id)) if alive else None
         # 기동이 목표 차선에서 끝난 경우만 차선변경으로 센다.
         # 걸쳤다가 출발 차선으로 돌아오면 차선 인덱스가 잠시 바뀌어도 세지 않는다.
-        lane_change, junction_straddle = 0, False
+        lane_change, junction_straddle, lc_cancelled = 0, False, False
         exit_missed, queue_cut = False, 0
         if alive:
-            lane_change, junction_straddle = self._update_maneuver()
+            lane_change, junction_straddle, lc_cancelled = self._update_maneuver()
             exit_missed = self._exit_missed()
             if lane_change != 0:
                 queue_cut = self._queue_cut_count()
@@ -1319,6 +1379,12 @@ class SumoHighwayEnv(gym.Env):
             if junction_straddle:
                 reward -= float(self.rw.get("junction_overlap_penalty", 0.0))
 
+            # ---- 걸쳤다가 출발 차선으로 돌아온 취소 벌점 ----
+            # 취소하면 다음 기동에서 겹침 유예가 새로 시작되므로, 유예로 면제된 만큼을
+            # 취소 때 받는다. 넣었다 뺐다를 반복해 두 차선을 계속 차지하는 것을 막는다.
+            if lc_cancelled:
+                reward -= float(self.rw.get("lane_change_cancel_penalty", 0.0))
+
             # ---- 막힘 페널티: 더 빠른 인접 차로를 두고 머무는 기회비용만큼 매 스텝 감점 ----
             # "차선을 유지한 채 막혀 있기"와 "변경으로 탈출하기" 사이에
             # 즉각적인 보상 차등을 만들어 추월 학습 신호를 조밀하게 한다.
@@ -1366,6 +1432,7 @@ class SumoHighwayEnv(gym.Env):
             "straddle_time": self.lc_straddle_steps * self.step_length,
             "npc_emergency_decel": self.npc_emergency_decel,
             "junction_straddle": junction_straddle,
+            "lane_change_cancelled": lc_cancelled,
             "exit_missed": exit_missed,
             "queue_cut": queue_cut,
             "nav_shaping": nav_shaping,

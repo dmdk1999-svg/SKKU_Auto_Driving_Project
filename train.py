@@ -69,9 +69,9 @@ HPARAMS = dict(
     # ---- 최적화 ----
     # lr=1e-4,                 # 학습률. 보상이 요동치면 낮출 것 (3e-4 → 1e-4 → 5e-5)
     lr=1e-4,
-    n_steps=2048,            # rollout 길이. 크면 advantage 추정이 안정적
+    n_steps=8192,            # rollout 길이. 크면 advantage 추정이 안정적
     n_epochs=10,             # 모은 데이터 재사용 횟수
-    minibatch_size=64,
+    minibatch_size=256,
 
     # ---- 할인 / advantage ----
     # gamma=0.99,              # 할인율 γ. 0.99 ≈ 100스텝(50초) 앞을 내다봄
@@ -116,13 +116,13 @@ HPARAMS = dict(
 )
 
 # ---- 평가 / 로깅 ----
-EVAL_INTERVAL = 5       # 몇 번의 업데이트마다 주행 지표를 평가할지 (0이면 안 함)
+EVAL_INTERVAL = 1       # 몇 번의 업데이트마다 주행 지표를 평가할지 (0이면 안 함)
 EVAL_EPISODES = 10      # 평가 1회당 에피소드 수
 LOG_INTERVAL = 1        # 몇 번의 업데이트마다 콘솔에 출력할지
 RESULTS_DIR = "results" # 결과 저장 폴더
 RUN_NAME = None         # None이면 run_날짜_시각 자동 생성.
                         # 문자열을 주면 그 이름으로 저장 (예: "exp_lr1e-4")
-RESUME = None           # 이어 학습할 체크포인트 경로. None이면 처음부터 학습.
+RESUME = "/mnt/i/orca/workspaces/SKKU_Auto_Driving_Project/exp-curr-slack-side-cancel-pen/results/run_20261127_145213/checkpoints/ckpt_954368.pt"  # 이어 학습할 체크포인트 경로. None이면 처음부터 학습.
                         # 예: "results/run_20261126_134914/checkpoints/ckpt_102400.pt"
                         # 그 체크포인트의 run 폴더에 이어서 기록하고, 이후 스텝의 기존 로그는 버린다.
                         # TOTAL_TIMESTEPS는 이어 학습한 스텝을 포함한 전체 스텝 수다.

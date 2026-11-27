@@ -15,6 +15,8 @@
 # ──────────────────────────────────────────────────────────────
 SIMULATION = {
     "step_length": 0.5,   # SUMO 1스텝 = 0.5초. RL의 1 timestep과 동일.
+    "use_libsumo": True,  # GUI가 아닐 때 소켓 TraCI 대신 libsumo로 SUMO를 직접 호출한다.
+                          # 시뮬레이션 결과는 같고 TraCI 조회가 빨라진다. False면 기존 TraCI.
                           # 작게 하면(0.1) 제어가 정밀해지지만 에피소드가 길어지고,
                           # 크게 하면(1.0) 학습이 빨라지지만 제어가 거칠어진다.
     "max_steps": 1000,    # 에피소드 최대 스텝 수. 1000 * 0.5초 = 500초.
@@ -40,7 +42,7 @@ SIMULATION = {
 }
 
 # ──────────────────────────────────────────────────────────────
-# 2) 관측 (Observation, 상태 S) — 46차원, 범위 [-1, 1]
+# 2) 관측 (Observation, 상태 S) — 51차원, 범위 [-1, 1]
 #
 # "내 차선 + 양옆 2차선씩" 총 5개 차선의 국소 교통 상황을 본다.
 # (3차선 도로에서 맨 왼쪽에 있어도 오프셋 -2로 맨 오른쪽 차선까지 보임 —
@@ -96,14 +98,27 @@ SIMULATION = {
 #   [45] 기동 중 처음 걸친 뒤 경과시간 / straddle_horizon  (걸치지 않았으면 0, 상한 1)
 #        겹침 벌점이 걸친 지 overlap_grace초 뒤부터 붙으므로, 보상이 시간에 따라
 #        달라지는 것을 정책이 알 수 있게 한다.
+#   [46] 차선변경 여유거리 / H  (clip -1 ~ 1)
+#        여유거리 = [40]의 잔여거리 - |필요한 차선 변경 수| × 제한속도 × lane_change_time.
+#        필요한 차선 변경 수가 0이면 잔여거리 / H와 같다. 음수이면 지금 속도 기준으로
+#        필요한 차선 변경을 마칠 거리가 부족하다는 뜻이다.
+#   [47] 좌1 측면 차량: 종방향 상대거리 / side_horizon  (-1~1, 앞 +, 없으면 1)
+#   [48] 좌1 측면 차량: 차체 사이 횡간격 / 차선폭      (0~1, 없으면 1)
+#   [49] 우1 측면 차량: 종방향 상대거리 / side_horizon  (-1~1, 앞 +, 없으면 1)
+#   [50] 우1 측면 차량: 차체 사이 횡간격 / 차선폭      (0~1, 없으면 1)
+#        측면 차량은 그 차선에서 ego와 중심 간 종방향 거리가 가장 가까운 차량이다.
+#        ego와 종방향으로 겹친 차량도 포함하고, |종방향 거리| <= side_horizon만 본다.
+#        교차로 내부이거나 그 차선이 없으면 둘 다 1이다.
 # ──────────────────────────────────────────────────────────────
 OBSERVATION = {
     "signal_horizon": 100.0,     # 신호를 볼 수 있는 거리이자 거리 정규화 기준 (m)
     "junction_horizon": 100.0,   # 교차로 거리 정규화 기준 (m)
     "straddle_horizon": 10.0,    # 걸친 후 경과시간 정규화 기준 (s)
+    "side_horizon": 10.0,        # 측면 차량 감지 범위이자 종방향 거리 정규화 기준 (m)
     "lat_speed_scale": 1.0,      # 횡속도 정규화 기준 (m/s)
     "route_horizon": 500.0,      # 경로 잔여거리 정규화 기준 (m)
     "lane_offset_scale": 6.0,    # 필요한 차선 변경 수 정규화 기준 (경로상 최대 6)
+    "lane_change_time": 4.0,     # 차선 1개 변경에 드는 시간 (s). 여유거리 계산에 쓴다.
     "visibility": 50.0,          # 관측 가능 거리 W (m). 앞뒤 차량 감지와
                                  # 상대거리/연결성/밀도 정규화의 기준.
     "density_veh_length": 7.5,   # 밀도 계산 시 차량 1대의 점유 길이 (m)
@@ -136,7 +151,7 @@ OBSERVATION = {
 #   목표 차선이면 완료(차선변경 1회), 출발 차선이면 취소다.
 #   걸친 채 교차로에 들어가면 junction_overlap_penalty를 주고 취소로 끝낸다.
 #   기동이 없을 때는 환경이 현재 차선 중앙으로 자동 정렬한다.
-#   걸쳤다가 출발 차선으로 돌아오는 취소 뒤 retrigger_cooldown초 동안은 새 트리거를 무시한다.
+#   걸쳤다가 출발 차선으로 돌아오는 취소는 lane_change_cancel_penalty를 준다.
 #   (걸침 유예를 이용해 넣었다 뺐다를 반복하는 것을 막는다)
 #
 # 차선변경 안전 게이트는 없다. 측면 안전은 충돌 벌점과 리워드로 배운다.
@@ -147,7 +162,6 @@ ACTION = {
     "lane_change_index": 1,
     "lat_accel_index": 2,
     "lane_change_threshold": 0.5,
-    "retrigger_cooldown": 2.0,   # 걸친 뒤 취소하면 이 시간(s) 동안 새 트리거를 무시
 }
 
 # ──────────────────────────────────────────────────────────────
@@ -160,10 +174,12 @@ ACTION = {
 #                  (적색·황색 정지선은 속도 0인 앞차로 본다)
 #              - queue_cut_penalty × 밀려난 대기 줄 차량 수  ← 합류 완료 스텝
 #              + (Φ(s') - Φ(s))                           ← 내비게이션 포텐셜 셰이핑
-#                  Φ(s) = -nav_shaping_weight × |필요 차선변경 수| × clip(1 - 잔여거리/nav_shaping_horizon, 0, 1)
+#                  Φ(s) = -nav_shaping_weight × |필요 차선변경 수| × clip(1 - 여유거리/nav_shaping_horizon, 0, 1)
+#                  여유거리 = 잔여거리 - |필요 차선변경 수| × 제한속도 × lane_change_time
 # 종료 벌점   = -exit_miss_penalty (경로로 이어지지 않는 차선 끝 도달)
 #              - overlap_penalty × (걸친 폭/차 폭)  ← 처음 걸친 지 overlap_grace초 뒤부터
 #              - junction_overlap_penalty           ← 걸친 채 교차로에 들어간 스텝
+#              - lane_change_cancel_penalty         ← 걸쳤다가 출발 차선으로 돌아온 스텝
 # 종료 보상   = -collision_penalty (충돌)  또는  +arrival_bonus (완주)
 #
 # 설계 의도:
@@ -191,6 +207,9 @@ REWARD = {
     "overlap_grace": 3.0,        #   처음 걸친 뒤 이 시간(s) 동안은 감점하지 않는다.
                                  #   정상 차선변경은 이 안에 끝나고, 걸친 채 버틸 때만 감점된다
     "junction_overlap_penalty": 0.5,  # 차선에 걸친 채 교차로에 들어가면 1회 감점
+    "lane_change_cancel_penalty": 0.3,  # 걸쳤다가 출발 차선으로 돌아오면 1회 감점.
+                                 #   유예 동안 면제되는 겹침 벌점 최대치
+                                 #   (overlap_penalty × overlap_grace / step_length = 0.3)와 같게 둔다
     "collision_penalty": 5.0,    # 충돌 시 -5 를 받고 에피소드 즉시 종료
     "red_light_penalty": 5.0,    # 적색 신호 정지선을 넘으면 -5 를 받고 즉시 종료
     "arrival_bonus": 2.0,        # 도로 끝까지 완주하면 +2 받고 종료
@@ -211,9 +230,11 @@ REWARD = {
     "blocked_penalty": 0.05,     # 흐름 속도 차가 제한속도만큼일 때의 스텝당 감점 (0이면 비활성)
 
     # ---- 내비게이션 포텐셜 셰이핑: 출구놓침 지연 신호를 즉발 신호로 연결 ----
-    # Φ(s) = -nav_shaping_weight × |best_offset| × clip(1 - remain / nav_shaping_horizon, 0, 1)
+    # Φ(s) = -nav_shaping_weight × |best_offset| × clip(1 - slack / nav_shaping_horizon, 0, 1)
+    # slack = remain - |best_offset| × 제한속도 × lane_change_time (관측 [46]과 같은 여유거리)
     # 매 스텝 Φ(s') - Φ(s)를 더한다. (교차로 내부에서는 직전 Φ 유지)
-    #   · remain ≥ nav_shaping_horizon 구간에서는 Φ=0이라 추월을 방해하지 않는다.
+    #   · slack ≥ nav_shaping_horizon 구간에서는 Φ=0이라 추월을 방해하지 않는다.
+    #   · 필요한 차선이 많을수록 slack이 작아 셰이핑이 더 일찍 시작된다.
     #   · 출구가 가까워질수록 비최적 차선 체류 시 소폭 감점, 목표 차선 이동 시 즉각 보상.
     #   · Φ(s) ≤ 0인 포텐셜 차분이므로 왕복 파밍의 순이익이 항상 ≤ 0이다.
     "nav_shaping_weight": 0.5,    # 차선 1칸당 최대 포텐셜 크기 (0이면 비활성)

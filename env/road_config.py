@@ -421,7 +421,7 @@ TRAFFIC = {
     #   한산할 때 길찾기(차선 선택)를 먼저 배우고, 점점 혼잡한 끼어들기를 배우게 한다.
     #   학습 중 평가도 그 시점의 교통량으로 한다. 평가·수집 스크립트는 항상 1.0배다.
     "demand_curriculum": {"start": 0.3, "increment": 0.1,
-                          "success_above": 0.8, "consecutive": 2},
+                          "success_above": 0.5, "consecutive": 2},
     # 배경차가 정지할 때 앞차와 띄우는 간격 minGap (m). 실제 정체 행렬처럼 차량마다 다르게,
     # 이 범위를 min_gap_levels개로 나눈 값 중 하나를 쓴다. 컨트롤러마다 단계별 vType이 생긴다.
     "min_gap_range": (1.0, 1.5),
