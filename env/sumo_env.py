@@ -220,6 +220,8 @@ class SumoHighwayEnv(gym.Env):
         self.lane_change_index = int(action.get("lane_change_index", 1))
         self.lat_accel_index = int(action.get("lat_accel_index", 2))
         self.lane_change_threshold = float(action.get("lane_change_threshold", 0.5))
+        # 트리거 뒤 이 시간(s) 안에 차선 경계에 걸치지 않으면 기동을 중단한다.
+        self.lc_timeout = float(action.get("pre_straddle_timeout", 3.0))
         self.rw = reward
 
         # GUI는 ego를 따라가며 가까이 보이도록 기본값을 둔다.
@@ -489,6 +491,8 @@ class SumoHighwayEnv(gym.Env):
         # 기동 방향이다. 0은 기동 없음, +1은 왼쪽, -1은 오른쪽이다.
         self.lc_dir = 0
         self.lc_target = -1
+        # 기동을 시작한 스텝이다.
+        self.lc_start_step = 0
         self.lc_origin = -1
         self.lc_edge = ""
         # 기동 시작 후 차체가 한 번이라도 차선 경계에 걸쳤는지 나타낸다.
@@ -1088,6 +1092,7 @@ class SumoHighwayEnv(gym.Env):
             return False
         self.lc_dir = command
         self.lc_target = target
+        self.lc_start_step = self.step_count
         self.lc_origin = index
         self.lc_edge = edge
         self.lc_straddled = False
@@ -1096,9 +1101,8 @@ class SumoHighwayEnv(gym.Env):
     def _apply_lateral(self, lat_raw: float) -> None:
         """이번 스텝의 횡속도를 정하고 ego를 옆으로 움직인다.
 
-        기동 중에는 ``lat_raw``를 기동 방향 기준 횡가속도로 적분한다. 차체가 처음
-        차선 경계에 걸치기 전까지는 ``lat_raw`` 대신 목표 차선 쪽 최대 횡가속도를
-        쓴다. 기동이 없으면 ``lat_raw``를 무시하고 현재 차선 중앙으로 정렬한다.
+        기동 중에는 트리거한 스텝부터 ``lat_raw``를 기동 방향 기준 횡가속도로 적분한다.
+        기동이 없으면 ``lat_raw``를 무시하고 현재 차선 중앙으로 정렬한다.
         교차로 내부에서는 SUMO가 연결 차선을 따라가므로 횡이동을 하지 않는다.
         """
         if traci.vehicle.getRoadID(self.ego_id).startswith(":"):
@@ -1107,8 +1111,7 @@ class SumoHighwayEnv(gym.Env):
         dt = self.step_length
         dv_max = self.max_lat_accel * dt
         if self.lc_dir != 0:
-            accel = lat_raw if self.lc_straddled else 1.0
-            self.lat_speed += self.lc_dir * accel * dv_max
+            self.lat_speed += self.lc_dir * lat_raw * dv_max
         else:
             # 남은 거리 안에 멈출 수 있는 속도로 차선 중앙에 다가간다.
             lat = traci.vehicle.getLateralLanePosition(self.ego_id)
@@ -1237,6 +1240,9 @@ class SumoHighwayEnv(gym.Env):
         새 edge로 이어지는 목표 차선이 없으면 기동을 끝낸다. 출발 차선이 새 edge로 이어지지
         않으면 그 뒤로는 취소로 판정하지 않는다.
 
+        걸치기 전에는 출발 차선 중앙이나 그 반대쪽에서 출발 차선 쪽으로 움직이거나, 트리거 뒤
+        ``pre_straddle_timeout``초가 지나면 기동을 중단한다. 중단은 완료도 취소도 아니다.
+
         Returns ``(완료된 차선변경 방향, 걸친 채 교차로에 들어갔는지,
         걸쳤다가 출발 차선으로 돌아왔는지)``이다. 완료되지 않았으면 방향은 0이다.
         """
@@ -1267,6 +1273,11 @@ class SumoHighwayEnv(gym.Env):
             self.lc_straddled = True
             return 0, False, False
         if not self.lc_straddled:
+            lat = traci.vehicle.getLateralLanePosition(self.ego_id)
+            moving_back = self.lc_dir * lat <= 0.0 and self.lc_dir * self.lat_speed < 0.0
+            timed_out = (self.step_count - self.lc_start_step) * self.step_length >= self.lc_timeout
+            if moving_back or timed_out:
+                self._reset_maneuver()
             return 0, False, False
         completed = self.lc_dir if (
             traci.vehicle.getLaneIndex(self.ego_id) == self.lc_target) else 0
@@ -1351,8 +1362,8 @@ class SumoHighwayEnv(gym.Env):
             # 이번 스텝에 [1]과 [2]가 실제로 쓰였는지 기록한다.
             in_junction = traci.vehicle.getRoadID(self.ego_id).startswith(":")
             lc_used = self.lc_dir == 0 and not in_junction
-            lat_used = self.lc_dir != 0 and self.lc_straddled and not in_junction
             lateral_valid = self._start_maneuver(lc_command)
+            lat_used = self.lc_dir != 0 and not in_junction
             lc_started = lc_used and self.lc_dir != 0
             self._apply_lateral(lat_raw)
             pre_state = self._pre_step_state(v)
