@@ -6,7 +6,7 @@
 
 워커 프로세스는 torch를 불러오지 않는다. ``spawn`` 방식은 원래 자식 프로세스에서
 메인 스크립트(train.py)를 다시 import하는데, 그러면 torch까지 함께 올라온다. 그래서
-워커를 띄우는 동안에만 메인 모듈의 ``__file__``을 숨긴다.
+워커를 띄우는 동안에만 메인 모듈의 ``__spec__``과 ``__file__``을 숨긴다.
 
 Example:
     >>> envs = SubprocEnvs(2, env_kwargs, seed=0)
@@ -85,17 +85,21 @@ def _worker(conn: Connection, env_kwargs: dict, seed: int) -> None:
 
 @contextmanager
 def _main_file_hidden() -> Iterator[None]:
-    """블록 안에서 ``__main__`` 모듈의 ``__file__``을 숨긴다.
+    """블록 안에서 ``__main__`` 모듈의 ``__spec__``과 ``__file__``을 숨긴다.
 
-    ``spawn`` 자식 프로세스가 메인 스크립트를 다시 import하지 않게 한다.
+    ``spawn`` 자식 프로세스가 메인 스크립트를 경로로도, ``python -m`` 모듈 이름으로도
+    다시 import하지 않게 한다.
     """
     main = sys.modules["__main__"]
+    spec = getattr(main, "__spec__", None)
     path = getattr(main, "__file__", None)
+    main.__spec__ = None
     if path is not None:
         del main.__file__
     try:
         yield
     finally:
+        main.__spec__ = spec
         if path is not None:
             main.__file__ = path
 

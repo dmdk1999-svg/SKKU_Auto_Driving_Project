@@ -425,7 +425,15 @@ class PPO:
             run_dir: 주어지면 평가마다 ``run_dir/checkpoints/ckpt_<스텝>.pt``에
                 이어 학습용 체크포인트를 저장하고, 평가 평균 보상이 지금까지 가장
                 높으면 ``run_dir/best_model.pt``를 그 정책으로 교체한다.
+
+        반환할 때 모든 환경은 응답 대기 중인 명령이 없다.
+
+        Raises:
+            ValueError: 버퍼의 환경 수가 ``envs``와 다르다.
         """
+        if len(self.buffer.buffers) != envs.n_envs:
+            raise ValueError(f"버퍼 환경 수({len(self.buffer.buffers)})가 "
+                             f"envs 환경 수({envs.n_envs})와 다르다.")
         slots = [_EnvSlot() for _ in range(envs.n_envs)]
         demand_scale = float(envs.call(0, "get", "demand_scale"))
         visibility = float(envs.call(0, "get", "visibility"))
@@ -492,8 +500,15 @@ class PPO:
                     demand_scale = new_scale
                 # 평가가 학습 중이던 에피소드를 끊었으므로 리셋.
                 # (끊긴 경험은 이미 버퍼에 반영됐고 GAE가 부트스트랩하므로 무해)
-                for i, slot in enumerate(slots):
-                    self._start_reset(envs, slot, i, demand_scale)
+                if self.num_timesteps < total_timesteps:
+                    for i, slot in enumerate(slots):
+                        self._start_reset(envs, slot, i, demand_scale)
+
+        # 마지막 rollout에서 보낸 리셋의 응답을 받아 비운다.
+        for i, slot in enumerate(slots):
+            if slot.state != _READY:
+                envs.recv(i)
+                slot.state = _READY
 
     # ==================================================================
     def _save_eval_checkpoint(self, run_dir: str, score: float,
