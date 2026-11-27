@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>자율주행 AI 프로젝트</title>
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --surface: #ffffff;
+      --text: #1d1d1f;
+      --muted: #5f6368;
+      --accent: #1a5fb4;
+      --border: #e2e2de;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161618;
+        --surface: #1f1f22;
+        --text: #ececec;
+        --muted: #a0a0a6;
+        --accent: #78aeed;
+        --border: #2e2e33;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      line-height: 1.6;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+    header p { color: var(--muted); margin: 4px 0 0; }
+    h1 { font-size: 1.7rem; margin: 0; }
+    h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 40px 0 12px;
+    }
+    ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+    li a {
+      display: block;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      text-decoration: none;
+    }
+    li a:hover { border-color: var(--accent); }
+    .step { color: var(--accent); font-weight: 600; margin-right: 8px; }
+    footer { margin-top: 48px; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Artificial Intelligence and Control for Autonomous Driving</h1>
+      <p>자율주행 인공지능 및 제어 — 11조 프로젝트</p>
+    </header>
+
+    <h2>개인별 진행</h2>
+    <ol>
+      <li><a href="../project_materials/0_Project_Introduction.md"><span class="step">0</span>프로젝트 소개 및 전체 진행 방향</a></li>
+      <li><a href="../project_materials/1_SUMO_Windows_Setup.md"><span class="step">1</span>SUMO 설치 및 환경 설정 (Windows)</a></li>
+      <li><a href="../project_materials/1_SUMO_macOS_AppleSilicon_Setup.md"><span class="step">1</span>SUMO 설치 및 환경 설정 (macOS, Apple Silicon)</a></li>
+      <li><a href="../project_materials/2_Road_Environment_Construction.md"><span class="step">2</span>도로 및 모델 POMDP 구조 이해</a></li>
+    </ol>
+
+    <h2>팀별 진행 — 모델 학습</h2>
+    <ol>
+      <li><a href="../project_materials/3_Model_Training_BC.md"><span class="step">3</span>모방학습(BC) 기반 의사결정 모델 학습</a></li>
+      <li><a href="../project_materials/4_Model_Training_RL.md"><span class="step">4</span>강화학습(RL) 기반 의사결정 모델 학습</a></li>
+    </ol>
+
+    <h2>팀별 프로젝트</h2>
+    <ol>
+      <li><a href="../project_materials/5_Project_Preparation.md"><span class="step">5</span>프로젝트 진행을 위한 코드 소개</a></li>
+      <li><a href="../project_materials/6_Project_Evaluation.md"><span class="step">6</span>프로젝트 평가 기준</a></li>
+      <li><a href="../project_materials/7_Project_Consulting.md"><span class="step">7</span>팀별 컨설팅 진행</a></li>
+      <li><a href="../project_materials/8_Ramp_Congestion_Scenario_Plan.md"><span class="step">8</span>램프 혼잡 시나리오 계획</a></li>
+    </ol>
+
+    <footer>수업 자료 원문은 <code>project_materials/</code> 폴더에 있습니다.</footer>
+  </main>
+</body>
+</html>
