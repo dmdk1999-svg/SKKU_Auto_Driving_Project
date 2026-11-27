@@ -123,7 +123,7 @@ LOG_INTERVAL = 1        # 몇 번의 업데이트마다 콘솔에 출력할지
 RESULTS_DIR = "results" # 결과 저장 폴더
 RUN_NAME = None         # None이면 run_날짜_시각 자동 생성.
                         # 문자열을 주면 그 이름으로 저장 (예: "exp_lr1e-4")
-RESUME = None  # 이어 학습할 체크포인트 경로. None이면 처음부터 학습.
+RESUME = "results/run_20261127_195432/checkpoints/ckpt_401408.pt"  # 이어 학습할 체크포인트 경로. None이면 처음부터 학습.
                         # 예: "results/run_20261126_134914/checkpoints/ckpt_102400.pt"
                         # 그 체크포인트의 run 폴더에 이어서 기록하고, 이후 스텝의 기존 로그는 버린다.
                         # TOTAL_TIMESTEPS는 이어 학습한 스텝을 포함한 전체 스텝 수다.
