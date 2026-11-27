@@ -96,6 +96,51 @@ class RolloutBuffer:
         )
 
 
+class VecRolloutBuffer:
+    """환경 여러 개의 rollout을 환경별 :class:`RolloutBuffer`에 따로 쌓는 버퍼다.
+
+    환경마다 경험이 시간 순서대로 이어지므로 GAE는 환경별로 따로 계산하고, 결과와
+    텐서는 환경 0부터 차례로 이어 붙인다. 경험이 없는 환경은 건너뛴다.
+    """
+
+    def __init__(self, n_envs: int):
+        self.buffers = [RolloutBuffer() for _ in range(n_envs)]
+
+    def clear(self) -> None:
+        for buf in self.buffers:
+            buf.clear()
+
+    def add(self, i: int, obs, action, log_prob: float, reward: float, value: float,
+            done: bool) -> None:
+        """환경 ``i``의 경험 한 스텝을 추가한다. 인자는 :meth:`RolloutBuffer.add`와 같다."""
+        self.buffers[i].add(obs, action, log_prob, reward, value, done)
+
+    def __len__(self) -> int:
+        return sum(len(buf) for buf in self.buffers)
+
+    def _filled(self) -> list[int]:
+        return [i for i, buf in enumerate(self.buffers) if len(buf) > 0]
+
+    def compute_gae(self, last_values, gamma: float, gae_lambda: float):
+        """환경별 GAE(λ)를 계산해 이어 붙인 ``(advantages, returns)``를 반환한다.
+
+        Args:
+            last_values: 환경별 rollout 마지막 상태의 V(s). 환경 ``i``의 마지막 경험이
+                종료 스텝이면 그 값은 쓰이지 않는다.
+            gamma: 할인율.
+            gae_lambda: GAE λ.
+        """
+        parts = [self.buffers[i].compute_gae(float(last_values[i]), gamma, gae_lambda)
+                 for i in self._filled()]
+        return (np.concatenate([adv for adv, _ in parts]),
+                np.concatenate([ret for _, ret in parts]))
+
+    def to_tensors(self, device):
+        """환경별 (obs, actions, old_log_probs)를 이어 붙여 학습용 텐서로 변환한다."""
+        parts = [self.buffers[i].to_tensors(device) for i in self._filled()]
+        return tuple(torch.cat([p[k] for p in parts]) for k in range(3))
+
+
 # ======================================================================
 # Off-policy용: ReplayBuffer  (DQN, SAC 등을 추가할 때 사용)
 #

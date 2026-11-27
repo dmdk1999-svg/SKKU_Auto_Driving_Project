@@ -21,10 +21,10 @@ from env.road_config import ROAD, EGO, TRAFFIC
 from env.mdp_config import SIMULATION, OBSERVATION, ACTION
 from env.mdp_config import REWARD as REWARD_DEFAULTS
 from env import road_builder
-from env.sumo_env import SumoHighwayEnv
+from env.vec_env import SubprocEnvs
 
 from algorithms.ppo import PPO
-from utils.buffer import RolloutBuffer
+from utils.buffer import VecRolloutBuffer
 from utils.logger import RunLogger
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -117,6 +117,10 @@ HPARAMS = dict(
     device="auto",           # "auto" | "cpu" | "cuda"
 )
 
+# ---- 병렬 환경 ----
+N_ENVS = 2              # 동시에 돌릴 SUMO 환경 수. 환경마다 프로세스 하나(CPU 코어 하나)를 쓴다.
+                        # n_steps는 모든 환경을 합친 rollout 길이다.
+
 # ---- 평가 / 로깅 ----
 EVAL_INTERVAL = 1       # 몇 번의 업데이트마다 주행 지표를 평가할지 (0이면 안 함)
 EVAL_EPISODES = 10      # 평가 1회당 에피소드 수
@@ -175,8 +179,8 @@ if __name__ == "__main__":
         run_dir = make_run_dir()
     print(f"결과 폴더: {run_dir}")
 
-    # 3) 환경
-    env = SumoHighwayEnv(
+    # 3) 환경. 환경마다 별도 프로세스에서 SUMO를 돌린다 (env/vec_env.py).
+    envs = SubprocEnvs(N_ENVS, dict(
         cfg_path=sumocfg,
         road=ROAD, ego=EGO,
         mdp_sim=SIMULATION, mdp_obs=OBSERVATION,
@@ -184,25 +188,26 @@ if __name__ == "__main__":
         traffic=TRAFFIC,
         gui=False,   # 학습은 화면 없이 (수십 배 빠름)
         training=True,   # 배경차 비상제동 커리큘럼 사용 (road_config TRAFFIC 참고)
-    )
+    ), seed=HPARAMS["seed"])
 
     # 4) 경험 버퍼 + 에이전트
     #    버퍼는 메인에서 만들어 에이전트에 "주입"한다 (utils/buffer.py).
-    #    PPO는 on-policy라 RolloutBuffer를 쓰고, 나중에 SAC/DQN 같은
+    #    PPO는 on-policy라 환경별 RolloutBuffer를 묶은 VecRolloutBuffer를 쓰고, 나중에 SAC/DQN 같은
     #    off-policy 알고리즘을 붙일 땐 여기서 ReplayBuffer로 갈아끼우면 된다.
-    buffer = RolloutBuffer()
+    buffer = VecRolloutBuffer(N_ENVS)
     agent = PPO(
-        obs_dim=env.observation_space.shape[0],
-        act_dim=env.action_space.shape[0],
+        obs_dim=envs.observation_space.shape[0],
+        act_dim=envs.action_space.shape[0],
         buffer=buffer,
         **HPARAMS,
     )
-    print(f"obs_dim={env.observation_space.shape[0]}, "
-          f"act_dim={env.action_space.shape[0]}, device={agent.device}")
+    print(f"obs_dim={envs.observation_space.shape[0]}, "
+          f"act_dim={envs.action_space.shape[0]}, device={agent.device}, "
+          f"n_envs={N_ENVS}")
     if RESUME:
         extra = agent.load_checkpoint(RESUME)
         if "demand_scale" in extra:
-            env.demand_scale = float(extra["demand_scale"])
+            envs.set_all("demand_scale", float(extra["demand_scale"]))
         print(f"이어 학습: {RESUME} (steps={agent.num_timesteps}, "
               f"update={agent.n_updates}, best={agent.best_score:.2f})")
     logger = RunLogger(run_dir,
@@ -211,7 +216,7 @@ if __name__ == "__main__":
     # 5) 학습 → 저장
     #    try/finally: Ctrl+C나 에러로 중단돼도 SUMO 정리 + 결과 저장은 수행
     try:
-        agent.learn(env,
+        agent.learn(envs,
                     total_timesteps=TOTAL_TIMESTEPS,
                     logger=logger,
                     log_interval=LOG_INTERVAL,
@@ -219,7 +224,7 @@ if __name__ == "__main__":
                     eval_episodes=EVAL_EPISODES,
                     run_dir=run_dir)
     finally:
-        env.close()
+        envs.close()
         logger.close()
         model_path = os.path.join(run_dir, "model.pt")
         agent.save(model_path)
