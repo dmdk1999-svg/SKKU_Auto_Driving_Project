@@ -74,6 +74,8 @@ _SIGNAL_VALUE = {"r": -1.0, "R": -1.0, "s": -1.0, "u": -1.0,
                  "y": 0.0, "Y": 0.0, "g": 1.0, "G": 1.0}
 _RED_STATES = frozenset("rRsu")
 _YELLOW_STATES = frozenset("yY")
+# 옆 차선 연결의 신호 상태 중 적색으로 보는 문자다. 비신호 노드의 일시정지(s)는 뺀다.
+_LINK_RED_STATES = frozenset("rRu")
 
 
 class SumoHighwayEnv(gym.Env):
@@ -896,6 +898,68 @@ class SumoHighwayEnv(gym.Env):
             decel = float(self.rw.get("yellow_comfort_decel", 2.0))
             self._yellow_seen = (key, speed ** 2 / (2.0 * decel) <= light[2])
 
+    def _stop_line_gap(self, offset: int, speed: float) -> float | None:
+        """오프셋 차선 앞의 멈춰야 할 정지선을 앞차 간격과 같은 기준으로 반환한다.
+
+        정지선은 적색 신호이거나, 황색 신호를 처음 봤을 때 편안한 감속으로 설 수 있었던
+        경우다. 반환값은 정지선까지 거리에서 ego의 minGap을 뺀 값(m, 0 이상)이다.
+        ``getLeader``의 간격도 minGap을 뺀 값이라 같은 기준이 된다. 시야 밖이거나 멈출
+        정지선이 없으면 None이다.
+
+        현재 차선은 경로상 다음 신호를 본다. 옆 차선은 같은 edge 안에서 그 차선 끝의
+        신호 연결 상태를 본다. 경로의 다음 edge로 가는 연결이 있으면 그 연결을, 없으면
+        가장 제한적인 연결을 쓴다. 황색은 ego가 같은 진입로에서 처음 본 판정을 쓰고,
+        판정이 없으면 지금 속도로 판정한다.
+
+        Args:
+            offset: 차선 오프셋. -1은 오른쪽, 0은 현재, +1은 왼쪽이다.
+            speed: ego 속도(m/s).
+        """
+        edge = traci.vehicle.getRoadID(self.ego_id)
+        if edge.startswith(":"):
+            return None
+        if offset == 0:
+            light = self._next_light()
+            if light is None:
+                return None
+            dist, state = light[2], light[3]
+        else:
+            index = traci.vehicle.getLaneIndex(self.ego_id) + offset
+            if not 0 <= index < traci.edge.getLaneNumber(edge):
+                return None
+            lane_id = f"{edge}_{index}"
+            if lane_id not in self._tls_lanes:
+                return None
+            links = traci.lane.getLinks(lane_id)
+            if not links:
+                return None
+            route = traci.vehicle.getRoute(self.ego_id)
+            route_index = traci.vehicle.getRouteIndex(self.ego_id)
+            next_edge = route[route_index + 1] if route_index + 1 < len(route) else None
+            onward = [link for link in links if traci.lane.getEdgeID(link[0]) == next_edge]
+            states = [link[5] for link in (onward or links)]
+            if any(s in _LINK_RED_STATES for s in states):
+                state = "r"
+            elif any(s in _YELLOW_STATES for s in states):
+                state = "y"
+            else:
+                return None
+            dist = traci.lane.getLength(lane_id) - traci.vehicle.getLanePosition(self.ego_id)
+        if dist > self.visibility:
+            return None
+        if state in _YELLOW_STATES:
+            seen = self._yellow_seen
+            if seen is not None and seen[0][1] == edge:
+                stoppable = seen[1]
+            else:
+                decel = float(self.rw.get("yellow_comfort_decel", 2.0))
+                stoppable = speed ** 2 / (2.0 * decel) <= dist
+            if not stoppable:
+                return None
+        elif state not in _RED_STATES:
+            return None
+        return max(dist - traci.vehicle.getMinGap(self.ego_id), 0.0)
+
     def _r157_min_gap(self, v: float) -> float:
         """속도 ``v``(m/s)에서의 최소 차간거리 d_min(m)을 반환한다.
 
@@ -1020,8 +1084,12 @@ class SumoHighwayEnv(gym.Env):
         obs = [v / self.vmax]                      # [0] 내 절대속도
 
         # ----- 5개 차선(좌2→좌1→현재→우1→우2)의 선행/후행 상대거리·상대속도 -----
+        # 시야 안의 적색·정지 대상 황색 정지선이 앞차보다 가까우면 정지선을 멈춘 앞차로 본다.
         for offset in self.obs_offsets:
             lead = self._neighbor(offset, leader=True)
+            stop_gap = self._stop_line_gap(offset, v)
+            if stop_gap is not None and (lead is None or stop_gap < lead[0]):
+                lead = (stop_gap, 0.0)
             if lead is None:
                 obs += [1.0, 1.0]                  # 없음: 멀고 + 위협 없음
             else:
