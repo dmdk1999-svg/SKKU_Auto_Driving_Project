@@ -240,26 +240,36 @@ class PPO:
 
     def collect_rollout(self, envs, slots: list[_EnvSlot], demand_scale: float,
                         logger=None) -> list[float]:
-        """현재 정책으로 모든 환경을 합쳐 정확히 n_steps 스텝의 경험을 모은다.
+        """현재 정책으로 환경마다 정확히 ``n_steps // 환경 수`` 스텝의 경험을 모은다.
 
         환경마다 응답이 오는 대로 처리한다. 행동을 기다리는 환경들은 한 번에 묶어
         정책을 호출하고, 에피소드가 끝난 환경은 리셋을 보낸 뒤 기다리지 않는다. 그래서
-        한 환경이 리셋하는 동안에도 다른 환경은 스텝을 계속 진행한다. 끝나지 않은 리셋은
-        다음 호출로 넘어간다. 끝난 에피소드들의 보상 합을 반환한다.
+        한 환경이 리셋하는 동안에도 다른 환경은 스텝을 계속 진행한다. 몫을 먼저 채운
+        환경은 나머지 환경이 다 채울 때까지 쉰다. 환경별 스텝 수가 같으므로 데이터 구성은
+        동기식 수집과 같다. 끝나지 않은 리셋은 다음 호출로 넘어간다. 끝난 에피소드들의
+        보상 합을 반환한다.
 
         Args:
             envs: :class:`~env.vec_env.SubprocEnvs`.
             slots: 환경별 상태. 호출 사이에 유지한다.
             demand_scale: 새로 리셋하는 에피소드의 교통량 배율.
             logger: utils.logger.RunLogger (없으면 기록 안 함)
+
+        Raises:
+            ValueError: ``n_steps``가 환경 수로 나누어떨어지지 않는다.
         """
+        if self.n_steps % len(slots) != 0:
+            raise ValueError(f"n_steps({self.n_steps})는 환경 수({len(slots)})로 "
+                             f"나누어떨어져야 한다.")
+        quota = self.n_steps // len(slots)
         finished = []
         self.buffer.clear()
-        collected, in_flight = 0, 0
+        # 환경별로 행동을 보낸 스텝 수
+        sent = [0] * len(slots)
+        collected = 0
 
         while collected < self.n_steps:
-            room = self.n_steps - collected - in_flight
-            ready = [i for i, s in enumerate(slots) if s.state == _READY][:room]
+            ready = [i for i, s in enumerate(slots) if s.state == _READY and sent[i] < quota]
             if ready:
                 actions, log_probs, values = self.act_batch(
                     np.stack([slots[i].obs for i in ready]))
@@ -267,7 +277,7 @@ class PPO:
                     envs.send(i, "step", actions[k])
                     slots[i].pending = (slots[i].obs, actions[k], log_probs[k], values[k])
                     slots[i].state = _STEP
-                in_flight += len(ready)
+                    sent[i] += 1
 
             for i in envs.wait([i for i, s in enumerate(slots) if s.state != _READY]):
                 slot, result = slots[i], envs.recv(i)
@@ -275,7 +285,6 @@ class PPO:
                     slot.obs, slot.state = result, _READY
                     continue
                 next_obs, reward, terminated, truncated, info = result
-                in_flight -= 1
                 collected += 1
                 self.num_timesteps += 1
                 if logger is not None and info.get("collision") is not None:

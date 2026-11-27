@@ -119,7 +119,8 @@ HPARAMS = dict(
 
 # ---- 병렬 환경 ----
 N_ENVS = 2              # 동시에 돌릴 SUMO 환경 수. 환경마다 프로세스 하나(CPU 코어 하나)를 쓴다.
-                        # n_steps는 모든 환경을 합친 rollout 길이다.
+                        # n_steps는 모든 환경을 합친 rollout 길이이고, 환경마다 n_steps // N_ENVS씩
+                        # 모은다. n_steps는 N_ENVS로 나누어떨어져야 한다.
 
 # ---- 평가 / 로깅 ----
 EVAL_INTERVAL = 1       # 몇 번의 업데이트마다 주행 지표를 평가할지 (0이면 안 함)
