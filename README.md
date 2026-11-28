@@ -38,7 +38,7 @@
      ```
    - Windows / macOS 설치 가이드는 [`project_materials/1_SUMO_Windows_Setup.md`](./project_materials/1_SUMO_Windows_Setup.md), [`project_materials/1_SUMO_macOS_AppleSilicon_Setup.md`](./project_materials/1_SUMO_macOS_AppleSilicon_Setup.md)를 참고하세요.
 2. **Python 환경**
-   - `pyproject.toml` 기준 **Python 3.14 이상** (`uv` 사용 시 자동 구성)
+   - Python 3.14
 
 ### 2. 패키지 설치
 
@@ -48,7 +48,7 @@
 uv sync
 ```
 
-> 이후 명령어는 `uv run python <스크립트>.py`로 실행하거나 `.venv` 가상환경을 활성화한 뒤 실행합니다.
+> 아래 실행 예시는 모두 `uv run ...` 기준입니다 (`.venv` 가상환경을 직접 활성화한 경우 `uv run`을 생략해도 됩니다).
 
 #### 방법 B: `pip` 사용
 
@@ -56,7 +56,25 @@ uv sync
 python -m pip install torch gymnasium traci sumolib tensorboard
 ```
 
-> **참고 (`libsumo`):** GUI 없는 실행에서는 기본적으로 in-process 백엔드(`SIMULATION["use_libsumo"] = True`)를 사용합니다. `libsumo`가 없는 환경이라면 `pip install libsumo`로 설치하거나 `env/mdp_config.py`에서 `"use_libsumo": False`로 변경하세요.
+### 3. `libsumo` 설치 (Linux / macOS)
+
+GUI 없는 실행(`train.py`, `test.py --nogui`, `collect_pomdp_data.py` 등)은 기본적으로 소켓 TraCI 대신 고속 in-process 백엔드인 `libsumo`(`SIMULATION["use_libsumo"] = True`)를 사용합니다. `uv sync`에는 포함되어 있지 않으므로 아래 방법으로 설치합니다.
+
+- **Linux (`x86_64` / `aarch64`) 및 macOS (Apple Silicon, macOS 15 이상):**
+  ```bash
+  uv pip install libsumo
+  # pip 환경인 경우: python -m pip install libsumo
+  ```
+  > **Linux 참고:** `apt install sumo-tools`에 포함된 `/usr/share/sumo/tools/libsumo`는 시스템 기본 Python 버전에 맞춰 빌드되어 있어 Python 3.14 가상환경과 호환되지 않을 수 있으므로, 가상환경 내에 `uv pip install libsumo`로 설치하는 것을 권장합니다.
+
+- **macOS 구버전(macOS 14 이하) / Intel Mac / 소스 빌드 환경:**
+  - PyPI에 해당 플랫폼용 Python 3.14 wheel이 없는 경우, SUMO 소스 빌드 시 `swig`를 설치하고 CMake에 가상환경 Python 경로(`-DPython_EXECUTABLE="$(uv run which python)"`)를 지정해 빌드하면 `$SUMO_HOME/tools/libsumo`가 생성됩니다.
+  - `libsumo` 빌드 없이 실행하려면 `env/mdp_config.py`에서 `"use_libsumo": False`로 변경하면 기존 소켓 TraCI로 동일하게 동작합니다.
+
+- **설치 확인:**
+  ```bash
+  uv run python -c "import libsumo; print('libsumo OK')"
+  ```
 
 ---
 
@@ -68,10 +86,10 @@ python -m pip install torch gymnasium traci sumolib tensorboard
 
 ```bash
 # sumo-gui로 도로망 열기 (창이 뜨면 상단 ▶ 버튼으로 주행 재생)
-python view_road.py
+uv run python view_road.py
 
 # GUI 없이 도로 생성 및 120초 시뮬레이션 검증
-python view_road.py --nogui --seconds 120
+uv run python view_road.py --nogui --seconds 120
 ```
 
 > `env/road_config.py`의 `ROAD["osm"]["enabled"]`를 `False`로 바꾸면 기본 직선/사거리 트랙으로 전환됩니다.
@@ -79,7 +97,7 @@ python view_road.py --nogui --seconds 120
 ### 2. PPO 강화학습 (`train.py`)
 
 ```bash
-python train.py
+uv run python train.py
 ```
 
 - **실험 설정:** [`train.py`](./train.py) 상단의 `TOTAL_TIMESTEPS`, `REWARD_OVERRIDES`, `HPARAMS`, `N_ENVS`(병렬 환경 수), `RESUME`(체크포인트 이어 학습 경로, 처음부터 학습 시 `None`)에서 조정합니다.
@@ -91,13 +109,13 @@ python train.py
 
 ```bash
 # 학습된 모델로 200 에피소드 병렬 수집 (워커 8개)
-python collect_pomdp_data.py --model results/run_YYYYMMDD_HHMMSS/best_model.pt --episodes 200 --workers 8
+uv run python collect_pomdp_data.py --model results/run_YYYYMMDD_HHMMSS/best_model.pt --episodes 200 --workers 8
 
 # 확률적 행동 샘플링으로 수집 (--stochastic)
-python collect_pomdp_data.py --model results/run_YYYYMMDD_HHMMSS/best_model.pt --stochastic --episodes 200 --workers 8
+uv run python collect_pomdp_data.py --model results/run_YYYYMMDD_HHMMSS/best_model.pt --stochastic --episodes 200 --workers 8
 
 # 기본 정책(random / keep-lane)으로 GUI 확인하며 수집
-python collect_pomdp_data.py --policy keep-lane --episodes 10 --gui
+uv run python collect_pomdp_data.py --policy keep-lane --episodes 10 --gui
 ```
 
 ### 4. 모델 평가 및 주행 재생 (`test.py`, `measure_collisions.py`)
@@ -106,24 +124,24 @@ PPO/BC 모델 종류를 자동 판별하여 GUI 재생 또는 정량 지표 측�
 
 ```bash
 # 가장 최근 모델을 sumo-gui로 재생 (창이 뜨면 ▶ 버튼 클릭)
-python test.py
+uv run python test.py
 
 # 특정 모델 또는 체크포인트 지정 재생
-python test.py results/run_YYYYMMDD_HHMMSS/best_model.pt
-python test.py results/run_YYYYMMDD_HHMMSS/checkpoints/ckpt_622592.pt
+uv run python test.py results/run_YYYYMMDD_HHMMSS/best_model.pt
+uv run python test.py results/run_YYYYMMDD_HHMMSS/checkpoints/ckpt_622592.pt
 
 # GUI 없이 정량 지표(완주율·충돌률·평균 주행 시간 등) 측정
-python test.py results/run_YYYYMMDD_HHMMSS/best_model.pt --episodes 50 --nogui
-python test.py results/bc_MMDD_HHMM/model.pt --algorithm bc --episodes 50 --nogui
+uv run python test.py results/run_YYYYMMDD_HHMMSS/best_model.pt --episodes 50 --nogui
+uv run python test.py results/bc_MMDD_HHMM/model.pt --algorithm bc --episodes 50 --nogui
 
 # 충돌 유형별 집계 및 CSV 기록
-python measure_collisions.py results/run_YYYYMMDD_HHMMSS/best_model.pt --episodes 50 --out collisions.csv
+uv run python measure_collisions.py results/run_YYYYMMDD_HHMMSS/best_model.pt --episodes 50 --out collisions.csv
 ```
 
 ### 5. 학습 곡선 확인 (TensorBoard)
 
 ```bash
-tensorboard --logdir results
+uv run tensorboard --logdir results
 # http://localhost:6006 접속
 ```
 
