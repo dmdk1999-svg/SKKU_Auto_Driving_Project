@@ -237,6 +237,8 @@ ROAD = {
 
         "speed_limit": 22.22,   # 관측 정규화 기준 vmax (80 km/h)
         "warmup_steps": 600,    # ego 투입 전 교통을 흘려 정체를 만드는 스텝 수 (300초)
+        "warmup_jitter_steps": 200,  # 워밍업 길이를 에피소드마다 ±이 스텝 안에서 무작위로 바꾼다.
+                                     #   신호 주기(90~108초)에 대한 ego 도착 시점을 섞는다.
 
         "routes": {
             "olympic_e":          ("46676451", "46676451"),
@@ -416,6 +418,14 @@ TRAFFIC = {
     #   배우는 것을 줄이기 위한 것이다. train.py에서만 쓰이고, 평가·수집은 항상 최종값이다.
     #   (학습 중 평가도 같은 환경을 쓰므로 그 시점의 값으로 평가된다)
     "emergency_decel_curriculum": {"start": 9.0, "steps": 100_000},
+    # 학습 전용 교통량 커리큘럼 (성적 기준). 전체 교통량을 start배에서 시작해, 학습 중 평가에서
+    #   완주율이 success_above 이상이고 충돌률이 collision_at_most 이하인 평가가
+    #   consecutive번 연속되면 increment씩 올려 1.0배까지 늘린다.
+    #   한산할 때 길찾기(차선 선택)를 먼저 배우고, 점점 혼잡한 끼어들기를 배우게 한다.
+    #   학습 중 평가도 그 시점의 교통량으로 한다. 평가·수집 스크립트는 항상 1.0배다.
+    "demand_curriculum": {"start": 0.3, "increment": 0.1,
+                          "success_above": 0.5, "collision_at_most": 0.2,
+                          "consecutive": 3},
     # 배경차가 정지할 때 앞차와 띄우는 간격 minGap (m). 실제 정체 행렬처럼 차량마다 다르게,
     # 이 범위를 min_gap_levels개로 나눈 값 중 하나를 쓴다. 컨트롤러마다 단계별 vType이 생긴다.
     "min_gap_range": (1.0, 1.5),
